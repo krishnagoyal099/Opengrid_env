@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="OpenGrid — Multi-Agent POMDP Power Grid Control Room with Safe RL">
+    <title>OpenGrid | Control Room</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="icon" href="/static/logo.png" type="image/png">
+</head>
+<body>
+
+<!-- Loading Overlay -->
+<div class="loading-overlay" id="loading">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">OpenGrid — Initializing Control Room</div>
+</div>
+
+<!-- Alert Banner -->
+<div class="alert-banner" id="alertBanner">
+    <span id="alertText"></span>
+    <button class="dismiss" onclick="dismissAlert()">Dismiss</button>
+</div>
+
+<!-- Main Layout -->
+<div class="control-room">
+
+    <!-- ===== HEADER ===== -->
+    <header class="header">
+        <div class="header-brand">
+            <img src="/static/logo.png" alt="OpenGrid" class="logo-img" style="width:32px;height:32px;border-radius:6px;">
+            <div>
+                <h1>OpenGrid</h1>
+                <div class="sub">Multi-Agent Power Grid Control Room</div>
+            </div>
+        </div>
+
+        <div class="sim-badge">
+            <span class="dot"></span>
+            <span id="simStatus">READY</span>
+        </div>
+
+        <div class="header-stats">
+            <div class="header-stat">
+                <span class="label">Episode</span>
+                <span class="value normal" id="headerEpisode">--</span>
+            </div>
+            <div class="header-stat">
+                <span class="label">Step</span>
+                <span class="value" id="headerStep">0 / 50</span>
+            </div>
+            <div class="header-stat">
+                <span class="label">Frequency</span>
+                <span class="value normal" id="headerFreq">50.00 Hz</span>
+            </div>
+            <div class="header-stat">
+                <span class="label">Agents</span>
+                <span class="value normal" id="headerAgents">--</span>
+            </div>
+            <div class="header-stat">
+                <span class="label">Team Reward</span>
+                <span class="value" id="headerReward">0.00</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- ===== LEFT PANEL ===== -->
+    <aside class="left-panel">
+
+        <!-- Frequency Display -->
+        <div class="card">
+            <div class="card-title">Grid Frequency</div>
+            <div class="freq-display">
+                <div class="freq-arc-container" id="freqArc"></div>
+                <div class="freq-deviation" id="freqDev">Deviation: 0.00 Hz | Nominal: 50.00 Hz</div>
+                <div class="grid-condition normal" id="gridCondition">NORMAL</div>
+            </div>
+        </div>
+
+        <!-- System Summary -->
+        <div class="card">
+            <div class="card-title">System Summary</div>
+            <div class="stat-row highlight">
+                <span class="label">Total Generation</span>
+                <span class="value" id="totalGen">-- MW</span>
+            </div>
+            <div class="stat-row">
+                <span class="label">Total Load</span>
+                <span class="value" id="totalLoad">-- MW</span>
+            </div>
+            <div class="stat-row">
+                <span class="label">Net Balance</span>
+                <span class="value" id="netBalance">-- MW</span>
+            </div>
+            <div class="stat-row">
+                <span class="label">Lines Connected</span>
+                <span class="value" id="linesConnected">--</span>
+            </div>
+            <div class="stat-row">
+                <span class="label">Lines Overloaded</span>
+                <span class="value" id="linesOverloaded" style="color: var(--status-normal);">0</span>
+            </div>
+        </div>
+
+        <!-- Coordination -->
+        <div class="card">
+            <div class="card-title">Oversight Agent</div>
+            <div class="coord-score">
+                <div class="big-value" id="coordScore" style="color: var(--status-normal);">1.00</div>
+                <div style="font-size:10px; color: var(--text-secondary); margin-top:4px;">Coordination Score</div>
+            </div>
+            <div class="stat-row">
+                <span class="label">Conflicts</span>
+                <span class="value" id="conflicts">0</span>
+            </div>
+            <div class="stat-row">
+                <span class="label">Safety Corrections</span>
+                <span class="value" id="safetyCorrTotal">0</span>
+            </div>
+            <div class="stat-row">
+                <span class="label">Selfish Actions</span>
+                <span class="value" id="selfishActions">0</span>
+            </div>
+        </div>
+
+        <!-- Exception Log -->
+        <div class="card" style="flex:1; display:flex; flex-direction:column; overflow:hidden;">
+            <div class="card-title" style="color: var(--status-warning);">Exception Log</div>
+            <div class="alarm-log" id="alarmLog">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+
+        <!-- Task Selector -->
+        <div class="card" style="flex-shrink:0;">
+            <div class="card-title">Task &amp; Controls</div>
+            <div class="task-selector" id="taskSelector">
+                <button class="task-btn" data-task="task_easy">Easy</button>
+                <button class="task-btn" data-task="task_medium">Medium</button>
+                <button class="task-btn" data-task="task_hard">Hard</button>
+                <button class="task-btn active" data-task="task_karnataka" style="color: #ffeb3b; border-color: rgba(255,235,59,0.3);">Karnataka</button>
+            </div>
+            <div class="controls-row" style="margin-top: var(--gap-sm);">
+                <button class="ctrl-btn active" id="btnReset" onclick="resetEpisode()">Reset</button>
+                <button class="ctrl-btn" id="btnStep" onclick="stepEpisode()">Step</button>
+                <button class="ctrl-btn" id="btnAutoRun" onclick="toggleAutoRun()">Auto</button>
+            </div>
+        </div>
+
+    </aside>
+
+    <!-- ===== CENTER PANEL (Grid Map) ===== -->
+    <main class="center-panel" id="centerPanel">
+        <div class="grid-map" id="gridMap"></div>
+        <div class="bus-tooltip" id="busTooltip">
+            <div class="tt-title" id="ttTitle">Bus 0</div>
+            <div class="tt-row"><span>Type</span><span class="tt-val" id="ttType">--</span></div>
+            <div class="tt-row"><span>Injection</span><span class="tt-val" id="ttInj">-- MW</span></div>
+            <div class="tt-row"><span>Zone</span><span class="tt-val" id="ttZone">--</span></div>
+        </div>
+    </main>
+
+    <!-- ===== RIGHT PANEL (Agent Monitor) ===== -->
+    <aside class="right-panel">
+        <div class="card">
+            <div class="card-title">Agent Leaderboard</div>
+            <ul class="leaderboard" id="leaderboard">
+                <!-- Populated by JS -->
+            </ul>
+        </div>
+
+        <div id="agentCards">
+            <!-- Populated by JS -->
+        </div>
+    </aside>
+
+    <!-- ===== BOTTOM PANEL ===== -->
+    <footer class="bottom-panel">
+
+        <!-- Reward History Chart -->
+        <div class="bottom-card">
+            <div class="card-title">Reward History</div>
+            <div class="chart-area" id="rewardChart"></div>
+        </div>
+
+        <!-- Frequency Trend -->
+        <div class="bottom-card">
+            <div class="card-title">Frequency Trend</div>
+            <div class="chart-area" id="freqChart"></div>
+        </div>
+
+        <!-- Generation Mix -->
+        <div class="bottom-card">
+            <div class="card-title">Generation Mix</div>
+            <div class="chart-area" id="genMixChart"></div>
+        </div>
+
+        <!-- Episode Score -->
+        <div class="bottom-card">
+            <div class="card-title">Episode Score</div>
+            <div class="coord-score" style="flex:1; display:flex; flex-direction:column; justify-content:center;">
+                <div class="big-value" id="episodeScore" style="color: var(--chart-reward); font-size: 36px;">--</div>
+                <div style="font-size:10px; color: var(--text-secondary); margin-top:4px;">Grader Score</div>
+                <div style="font-size:11px; margin-top:8px;">
+                    <span style="color: var(--text-secondary);">Steps:</span>
+                    <span id="totalSteps" style="font-family: 'JetBrains Mono'; font-weight:600;">0</span>
+                    <span style="color: var(--text-secondary); margin-left:8px;">Blackout:</span>
+                    <span id="blackoutStatus" style="font-family: 'JetBrains Mono'; font-weight:600; color: var(--status-normal);">No</span>
+                </div>
+            </div>
+            <div class="controls-row">
+                <button class="ctrl-btn" onclick="getGrade()">Grade</button>
+                <button class="ctrl-btn danger" onclick="resetEpisode()">New Episode</button>
+            </div>
+        </div>
+
+    </footer>
+
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

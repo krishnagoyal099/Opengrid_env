@@ -1,0 +1,40 @@
+spec_version: 1
+name: opengrid
+type: space
+runtime: fastapi
+app: app:app
+port: 7860
+
+# Environment supports both single-agent and multi-agent POMDP modes.
+# Single-agent: /reset + /step (backward compatible)
+# Multi-agent:  /reset_multi + /step_multi (2-3 agents per zone)
+
+tasks:
+  - id: task_easy
+    name: Easy Grid (5 buses, 2 agents, 20% renewables)
+    description: Basic frequency control with 2-zone coordination
+    agents: 2
+    grader:
+      endpoint: /grader
+      score_range: [0.02, 0.98]
+  - id: task_medium
+    name: Medium Grid (10 buses, 3 agents, 50% renewables)
+    description: Congestion management with 3-zone POMDP and volatile renewables
+    agents: 3
+    grader:
+      endpoint: /grader
+      score_range: [0.02, 0.98]
+  - id: task_hard
+    name: Hard Grid (14 buses, 3 agents, 70% renewables)
+    description: High volatility, tight margins, complex topology with safety constraints
+    agents: 3
+    grader:
+      endpoint: /grader
+      score_range: [0.02, 0.98]
+  - id: task_karnataka
+    name: Karnataka KPTCL Grid (5 buses, 2 agents, real-world topology)
+    description: Realistic Karnataka power grid with POMDP multi-agent coordination
+    agents: 2
+    grader:
+      endpoint: /grader
+      score_range: [0.02, 0.98]

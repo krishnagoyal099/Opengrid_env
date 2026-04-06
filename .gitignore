@@ -1,0 +1,36 @@
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.env
+.vscode/
+
+# Generated / temporary files
+inference_output.txt
+codebase_summary.md
+generate_code_md.py
+uv.lock
+
+# Reference docs (not part of submission)
+guide.md
+detailed judging criteria.md
+ui_skill.md
+project-spec.md
+pyrightconfig.json
+
+# Training outputs (large files — push separately or add to HF)
+training/outputs/
+*.safetensors
+*.bin
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Duplicate test file (tests/ directory has the real one)
+test_multiagent.py

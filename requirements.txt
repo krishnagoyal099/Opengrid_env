@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+pydantic>=2.0
+numpy
+networkx
+matplotlib
+openai
+httpx
+openenv-core>=0.2.0

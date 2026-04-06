@@ -1,0 +1,935 @@
+/* ============================================================================
+   OpenGrid KPTCL-SLDC Control Room — Design System
+   Inspired by ERCOT control room aesthetics, adapted for Karnataka grid
+   ============================================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+/* ---------- CSS Custom Properties ---------- */
+:root {
+    /* Background layers */
+    --bg-primary:     #0a0e1a;
+    --bg-secondary:   #0f1628;
+    --bg-tertiary:    #141d35;
+    --bg-glass:       rgba(15, 22, 40, 0.85);
+    --bg-card:        rgba(15, 22, 40, 0.7);
+
+    /* Operational states */
+    --status-normal:  #00e5a0;
+    --status-warning: #ffd700;
+    --status-critical:#ff3d3d;
+    --status-offline: #4a5568;
+    --status-overload:#ff6b35;
+
+    /* Voltage colors */
+    --voltage-400kv:  #e94560;
+    --voltage-220kv:  #f5a623;
+    --voltage-110kv:  #7ed321;
+    --voltage-66kv:   #4a90d9;
+
+    /* Agent identity colors */
+    --agent-0: #00bfff;
+    --agent-1: #ff69b4;
+    --agent-2: #ff6347;
+
+    /* Text */
+    --text-primary:   #e8eaf6;
+    --text-secondary: #90a4ae;
+    --text-accent:    #00e5a0;
+    --text-danger:    #ff5252;
+    --text-muted:     #546e7a;
+
+    /* Chart */
+    --chart-demand:   #00bfff;
+    --chart-supply:   #00e5a0;
+    --chart-reward:   #ffd700;
+
+    /* Spacing */
+    --gap-sm: 8px;
+    --gap-md: 12px;
+    --gap-lg: 16px;
+    --gap-xl: 20px;
+
+    /* Radius */
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+}
+
+/* ---------- Reset & Base ---------- */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+    height: 100%;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: 'Inter', 'Segoe UI', sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Subtle scanline overlay */
+body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none;
+    z-index: 9999;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.03) 2px,
+        rgba(0,0,0,0.03) 4px
+    );
+}
+
+/* ---------- Layout ---------- */
+.control-room {
+    display: grid;
+    grid-template-rows: 52px 1fr 180px;
+    grid-template-columns: 260px 1fr 300px;
+    grid-template-areas:
+        "header  header  header"
+        "left    center  right"
+        "bottom  bottom  bottom";
+    height: 100vh;
+    gap: 1px;
+    background: rgba(255,255,255,0.04);
+}
+
+/* ---------- Header ---------- */
+.header {
+    grid-area: header;
+    background: linear-gradient(90deg, #0a0e1a, #0f2040);
+    display: flex;
+    align-items: center;
+    padding: 0 var(--gap-lg);
+    gap: var(--gap-lg);
+    border-bottom: 1px solid rgba(0,229,160,0.15);
+    z-index: 10;
+}
+
+.header-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-sm);
+    flex-shrink: 0;
+}
+
+.header-brand .logo {
+    width: 28px;
+    height: 28px;
+    background: linear-gradient(135deg, #00e5a0, #00bfff);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 14px;
+    color: #0a0e1a;
+}
+
+.header-brand h1 {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
+.header-brand .sub {
+    font-size: 10px;
+    color: var(--text-secondary);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.header-stats {
+    display: flex;
+    gap: var(--gap-lg);
+    margin-left: auto;
+    align-items: center;
+}
+
+.header-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 4px 12px;
+    border-radius: var(--radius-sm);
+    background: rgba(255,255,255,0.04);
+}
+
+.header-stat .label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+}
+
+.header-stat .value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.header-stat .value.normal { color: var(--status-normal); }
+.header-stat .value.warning { color: var(--status-warning); }
+.header-stat .value.critical { color: var(--status-critical); }
+
+.sim-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    background: rgba(0,229,160,0.1);
+    border: 1px solid rgba(0,229,160,0.25);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--status-normal);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.sim-badge .dot {
+    width: 6px; height: 6px;
+    background: var(--status-normal);
+    border-radius: 50%;
+    animation: pulse-dot 2s infinite;
+}
+
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(0,229,160,0.4); }
+    50% { opacity: 0.7; box-shadow: 0 0 0 4px rgba(0,229,160,0); }
+}
+
+/* ---------- Left Panel ---------- */
+.left-panel {
+    grid-area: left;
+    background: var(--bg-secondary);
+    padding: var(--gap-md);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-md);
+    border-right: 1px solid rgba(255,255,255,0.05);
+}
+
+/* ---------- Cards (shared) ---------- */
+.card {
+    background: var(--bg-card);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: var(--radius-md);
+    padding: var(--gap-md);
+    backdrop-filter: blur(8px);
+}
+
+.card-title {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-secondary);
+    margin-bottom: var(--gap-sm);
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+/* ---------- Alarm Log ---------- */
+.alarm-log {
+    flex: 1;
+    max-height: 90px;
+    overflow-y: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    line-height: 1.4;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.alarm-entry {
+    padding: 4px 6px;
+    background: rgba(255,255,255,0.03);
+    border-left: 2px solid transparent;
+    border-radius: 2px;
+}
+.alarm-time { color: var(--text-muted); margin-right: 6px; }
+.alarm-entry.warn { border-left-color: var(--status-warning); background: rgba(255,152,0,0.05); color: #ffb74d; }
+.alarm-entry.crit { border-left-color: var(--status-critical); background: rgba(244,67,54,0.05); color: #ef5350; }
+.alarm-entry.info { border-left-color: var(--status-normal); }
+
+/* ---------- Frequency Display ---------- */
+.freq-display {
+    text-align: center;
+    padding: var(--gap-md) var(--gap-sm);
+}
+
+.freq-arc-container {
+    position: relative;
+    width: 200px;
+    height: 110px;
+    margin: 0 auto;
+}
+
+.freq-arc-container svg { overflow: visible; }
+
+.freq-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -1px;
+    transition: color 0.3s;
+}
+
+.freq-value.normal { color: var(--status-normal); text-shadow: 0 0 20px rgba(0,229,160,0.3); }
+.freq-value.warning { color: var(--status-warning); text-shadow: 0 0 20px rgba(255,215,0,0.3); }
+.freq-value.critical { color: var(--status-critical); text-shadow: 0 0 20px rgba(255,61,61,0.3); animation: freq-blink 0.5s infinite; }
+
+@keyframes freq-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+.freq-deviation {
+    margin-top: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-secondary);
+}
+
+/* Grid condition badge */
+.grid-condition {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-top: var(--gap-sm);
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+}
+.grid-condition.normal { background: rgba(0,229,160,0.1); color: var(--status-normal); border: 1px solid rgba(0,229,160,0.2); }
+.grid-condition.conservative { background: rgba(255,215,0,0.08); color: var(--status-warning); border: 1px solid rgba(255,215,0,0.15); }
+.grid-condition.alert { background: rgba(255,107,53,0.1); color: var(--status-overload); border: 1px solid rgba(255,107,53,0.2); }
+.grid-condition.emergency { background: rgba(255,61,61,0.1); color: var(--status-critical); border: 1px solid rgba(255,61,61,0.2); animation: cond-pulse 1s infinite; }
+
+@keyframes cond-pulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(255,61,61,0.2); }
+    50% { box-shadow: 0 0 0 4px rgba(255,61,61,0); }
+}
+
+/* ---------- System Summary ---------- */
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    font-size: 12px;
+}
+
+.stat-row .label { color: var(--text-secondary); }
+.stat-row .value {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 500;
+}
+
+.stat-row.highlight .value {
+    color: var(--status-normal);
+    font-weight: 600;
+}
+
+/* Progress bars */
+.progress-bar {
+    height: 4px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 4px;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.5s;
+}
+
+/* ---------- Center Panel (Grid Map) ---------- */
+.center-panel {
+    grid-area: center;
+    background: var(--bg-tertiary);
+    position: relative;
+    overflow: hidden;
+}
+
+.grid-map {
+    width: 100%;
+    height: 100%;
+}
+
+.grid-map svg {
+    width: 100%;
+    height: 100%;
+}
+
+/* SVG map styles */
+.zone-polygon {
+    opacity: 0.06;
+    transition: opacity 0.4s;
+    cursor: pointer;
+    filter: blur(0.5px);
+}
+.zone-polygon:hover { opacity: 0.18; }
+
+.substation-node { cursor: pointer; }
+.substation-node:hover .node-outer { stroke-width: 2.5; filter: url(#glow); }
+.substation-node:hover .node-label { opacity: 1; }
+
+.node-label {
+    font-family: 'Inter', sans-serif;
+    font-size: 8px;
+    fill: var(--text-secondary);
+    text-anchor: middle;
+    pointer-events: none;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.node-mw {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    fill: var(--text-primary);
+    text-anchor: middle;
+    pointer-events: none;
+    font-weight: 500;
+}
+
+.line-flow {
+    fill: none;
+    stroke-linecap: round;
+}
+
+/* Animated flow on lines */
+@keyframes dash-flow {
+    to { stroke-dashoffset: -24; }
+}
+.line-animated {
+    animation: dash-flow 1.2s linear infinite;
+}
+.line-animated.reverse {
+    animation-direction: reverse;
+}
+
+.flow-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    fill: rgba(232,234,246,0.6);
+    text-anchor: middle;
+    pointer-events: none;
+}
+
+.zone-badge { font-family: 'Inter', sans-serif; pointer-events: none; }
+.zone-badge-bg {
+    rx: 8;
+    fill: rgba(10, 14, 26, 0.88);
+    stroke-width: 1;
+    backdrop-filter: blur(6px);
+}
+.zone-badge-name { font-size: 10px; font-weight: 600; text-anchor: middle; }
+.zone-badge-status { font-size: 8px; text-anchor: middle; fill: var(--text-secondary); }
+.zone-badge-reward { font-size: 9px; text-anchor: middle; font-weight: 600; font-family: 'JetBrains Mono', monospace; }
+
+/* Bus tooltip */
+.bus-tooltip {
+    position: absolute;
+    background: rgba(10, 14, 26, 0.95);
+    border: 1px solid rgba(0,229,160,0.2);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    font-size: 11px;
+    pointer-events: none;
+    z-index: 20;
+    min-width: 140px;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    display: none;
+}
+.bus-tooltip.visible { display: block; }
+.bus-tooltip .tt-title {
+    font-weight: 600;
+    margin-bottom: 4px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.bus-tooltip .tt-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 1px 0;
+}
+.bus-tooltip .tt-row .tt-val {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 500;
+}
+
+/* Map overlay controls */
+.map-controls {
+    position: absolute;
+    top: var(--gap-md);
+    right: var(--gap-md);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    z-index: 5;
+}
+
+.map-btn {
+    width: 32px; height: 32px;
+    background: var(--bg-glass);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(8px);
+    transition: all 0.2s;
+}
+
+.map-btn:hover {
+    background: rgba(0,229,160,0.15);
+    color: var(--status-normal);
+    border-color: rgba(0,229,160,0.3);
+}
+
+/* ---------- Right Panel (Agent Monitor) ---------- */
+.right-panel {
+    grid-area: right;
+    background: var(--bg-secondary);
+    padding: var(--gap-md);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-md);
+    border-left: 1px solid rgba(255,255,255,0.05);
+}
+
+/* Agent cards */
+.agent-card {
+    border-radius: var(--radius-md);
+    padding: var(--gap-md);
+    background: var(--bg-card);
+    border: 1px solid rgba(255,255,255,0.06);
+    backdrop-filter: blur(8px);
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.agent-card.active {
+    border-color: rgba(0,229,160,0.2);
+}
+
+.agent-card.warning {
+    border-color: rgba(255,215,0,0.3);
+    box-shadow: 0 0 12px rgba(255,215,0,0.05);
+}
+
+.agent-card.critical {
+    border-color: rgba(255,61,61,0.3);
+    box-shadow: 0 0 12px rgba(255,61,61,0.08);
+    animation: card-pulse 1.5s infinite;
+}
+
+@keyframes card-pulse {
+    0%, 100% { box-shadow: 0 0 12px rgba(255,61,61,0.08); }
+    50% { box-shadow: 0 0 20px rgba(255,61,61,0.15); }
+}
+
+.agent-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--gap-sm);
+}
+
+.agent-name {
+    font-size: 12px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.agent-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.agent-status-badge {
+    font-size: 9px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.agent-status-badge.active {
+    background: rgba(0,229,160,0.15);
+    color: var(--status-normal);
+}
+
+.agent-status-badge.corrected {
+    background: rgba(255,215,0,0.15);
+    color: var(--status-warning);
+}
+
+.agent-metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-top: var(--gap-sm);
+}
+
+.agent-metric {
+    padding: 6px 8px;
+    background: rgba(255,255,255,0.02);
+    border-radius: var(--radius-sm);
+}
+
+.agent-metric .label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+}
+
+.agent-metric .value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    font-weight: 600;
+    margin-top: 2px;
+}
+
+/* Safety shield */
+.safety-shield {
+    margin-top: var(--gap-sm);
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.safety-shield.safe {
+    background: rgba(0,229,160,0.08);
+    border: 1px solid rgba(0,229,160,0.15);
+    color: var(--status-normal);
+}
+
+.safety-shield.corrected {
+    background: rgba(255,215,0,0.08);
+    border: 1px solid rgba(255,215,0,0.2);
+    color: var(--status-warning);
+}
+
+.safety-shield.violated {
+    background: rgba(255,61,61,0.08);
+    border: 1px solid rgba(255,61,61,0.2);
+    color: var(--status-critical);
+}
+
+/* Sparkline */
+.sparkline-container {
+    margin-top: var(--gap-sm);
+    height: 30px;
+    background: rgba(255,255,255,0.02);
+    border-radius: var(--radius-sm);
+    padding: 4px;
+}
+
+.sparkline-container svg {
+    width: 100%;
+    height: 100%;
+}
+
+/* ---------- Bottom Panel ---------- */
+.bottom-panel {
+    grid-area: bottom;
+    background: var(--bg-secondary);
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: 1px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+}
+
+.bottom-card {
+    background: var(--bg-card);
+    padding: var(--gap-md);
+    display: flex;
+    flex-direction: column;
+}
+
+.chart-area {
+    flex: 1;
+    position: relative;
+    min-height: 0;
+}
+
+.chart-area canvas, .chart-area svg {
+    width: 100%;
+    height: 100%;
+}
+
+/* Reward chart */
+.reward-history {
+    flex: 1;
+}
+
+/* Controls */
+.controls-row {
+    display: flex;
+    gap: var(--gap-sm);
+    margin-top: var(--gap-sm);
+}
+
+.ctrl-btn {
+    flex: 1;
+    padding: 6px 10px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+}
+
+.ctrl-btn:hover {
+    background: rgba(0,229,160,0.1);
+    border-color: rgba(0,229,160,0.3);
+}
+
+.ctrl-btn.active {
+    background: rgba(0,229,160,0.15);
+    border-color: var(--status-normal);
+    color: var(--status-normal);
+}
+
+.ctrl-btn.danger {
+    border-color: rgba(255,61,61,0.3);
+}
+
+.ctrl-btn.danger:hover {
+    background: rgba(255,61,61,0.1);
+    border-color: rgba(255,61,61,0.5);
+    color: var(--status-critical);
+}
+
+/* Task selector */
+.task-selector {
+    display: flex;
+    gap: 4px;
+}
+
+.task-btn {
+    flex: 1;
+    padding: 4px 8px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 10px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.task-btn:hover { border-color: rgba(0,229,160,0.3); color: var(--text-primary); }
+.task-btn.active { background: rgba(0,229,160,0.1); border-color: var(--status-normal); color: var(--status-normal); }
+
+/* Leaderboard */
+.leaderboard {
+    list-style: none;
+}
+
+.leaderboard li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 0;
+    font-size: 11px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+
+.leaderboard li:last-child { border-bottom: none; }
+
+.leaderboard .agent-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.leaderboard .score {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    font-size: 12px;
+}
+
+/* Coordination score */
+.coord-score {
+    text-align: center;
+    padding: var(--gap-sm);
+}
+
+.coord-score .big-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 28px;
+    font-weight: 700;
+}
+
+/* Alert banner */
+.alert-banner {
+    position: fixed;
+    top: 52px;
+    left: 0; right: 0;
+    z-index: 100;
+    padding: 8px var(--gap-lg);
+    display: flex;
+    align-items: center;
+    gap: var(--gap-sm);
+    font-size: 12px;
+    font-weight: 500;
+    transform: translateY(-100%);
+    transition: transform 0.3s;
+}
+
+.alert-banner.visible { transform: translateY(0); }
+
+.alert-banner.critical {
+    background: rgba(255,61,61,0.15);
+    border-bottom: 1px solid rgba(255,61,61,0.3);
+    color: var(--status-critical);
+}
+
+.alert-banner.warning {
+    background: rgba(255,215,0,0.1);
+    border-bottom: 1px solid rgba(255,215,0,0.2);
+    color: var(--status-warning);
+}
+
+.alert-banner .dismiss {
+    margin-left: auto;
+    background: none;
+    border: 1px solid currentColor;
+    border-radius: var(--radius-sm);
+    color: inherit;
+    padding: 2px 8px;
+    font-size: 10px;
+    cursor: pointer;
+    opacity: 0.7;
+}
+
+.alert-banner .dismiss:hover { opacity: 1; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+/* Loading state */
+.loading-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: var(--bg-primary);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    transition: opacity 0.5s;
+}
+
+.loading-overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.loading-spinner {
+    width: 40px; height: 40px;
+    border: 3px solid rgba(0,229,160,0.15);
+    border-top-color: var(--status-normal);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.loading-text {
+    margin-top: var(--gap-md);
+    color: var(--text-secondary);
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+}
+
+/* ── Leaflet Overrides ── */
+.grid-map .leaflet-container {
+    background: var(--bg-primary) !important;
+}
+
+.leaflet-tooltip-dark {
+    background: rgba(10, 14, 26, 0.92) !important;
+    border: 1px solid rgba(0, 229, 160, 0.3) !important;
+    color: #e0e0e0 !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 11px !important;
+    border-radius: 6px !important;
+    padding: 6px 10px !important;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.6) !important;
+}
+
+.leaflet-tooltip-dark::before {
+    border-top-color: rgba(10, 14, 26, 0.92) !important;
+}
+
+.bus-label-icon, .bus-mw-icon, .zone-badge-leaflet {
+    background: none !important;
+    border: none !important;
+    text-align: center;
+}
+
+/* Dark zoom controls */
+.leaflet-control-zoom a {
+    background: rgba(15, 22, 40, 0.9) !important;
+    color: var(--status-normal) !important;
+    border-color: rgba(0, 229, 160, 0.2) !important;
+    font-family: 'JetBrains Mono', monospace !important;
+}
+.leaflet-control-zoom a:hover {
+    background: rgba(0, 229, 160, 0.15) !important;
+}
+
+.leaflet-control-attribution {
+    background: rgba(10, 14, 26, 0.6) !important;
+    color: #555 !important;
+    font-size: 9px !important;
+}
+.leaflet-control-attribution a {
+    color: #666 !important;
+}
