@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.env
+inference_output.txt
+codebase_summary.md
+generate_code_md.py
