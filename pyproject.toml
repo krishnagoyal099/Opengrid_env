@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "opengrid"
+version = "1.0.0"
+description = "Renewable energy grid load-balancing environment for AI agents"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "KRISHNA GOYAL", email = "krishnagoyalcse@gmail.com"}
+]
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic>=2.0",
+    "numpy",
+    "networkx",
+    "matplotlib",
+    "openai",
+    "httpx",
+    "openenv-core>=0.2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/K446/opengrid"
+
+[project.scripts]
+server = "server.app:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*", "server*"]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.13"
+extraPaths = ["."]

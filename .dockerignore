@@ -1,0 +1,31 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+.git/
+.gitignore
+.vscode/
+.env
+
+# Docs (keep README for the Space)
+guide.md
+detailed judging criteria.md
+ui_skill.md
+project-spec.md
+codebase_summary.md
+pyrightconfig.json
+
+# Generated files
+inference_output.txt
+generate_code_md.py
+uv.lock
+
+# Training outputs (not needed in Docker image)
+training/outputs/
+*.safetensors
+*.bin
+
+# Tests not needed in production
+tests/
+test_multiagent.py
