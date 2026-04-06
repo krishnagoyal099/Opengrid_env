@@ -1,3 +1,13 @@
+---
+title: OpenGrid
+emoji: ⚡
+colorFrom: green
+colorTo: blue
+sdk: docker
+app_file: app.py
+pinned: false
+---
+
 # OpenGrid — Renewable Energy Grid Load Balancing Environment
 
 [![OpenEnv](https://img.shields.io/badge/OpenEnv-compatible-blue)](https://github.com/openenv)
