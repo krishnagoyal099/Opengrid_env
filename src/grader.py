@@ -37,8 +37,9 @@ def compute_analytical_ceiling(max_steps: int) -> float:
 
 
 # Validator requires scores strictly in the open interval (0, 1).
-# Using generous epsilon to avoid any floating-point edge cases
-_SCORE_EPSILON = 0.005
+# Using wide epsilon so that even aggressive rounding (e.g. round(x, 1))
+# can never produce exactly 0.0 or 1.0.
+_SCORE_EPSILON = 0.01
 
 
 def normalize_score(cumulative_reward: float, reward_floor: float, reward_ceiling: float,
@@ -51,8 +52,8 @@ def normalize_score(cumulative_reward: float, reward_floor: float, reward_ceilin
     - reward_ceiling: analytical upper bound (perfect survival + perfect frequency bonus)
     - n1_survival_rate: fraction of episodes without blackout (adds up to 10% bonus)
 
-    Scores are clamped to (_SCORE_EPSILON, 1 - _SCORE_EPSILON) so they are
-    never exactly 0.0 or 1.0, satisfying the OpenEnv Phase-2 validator.
+    Scores are clamped to [0.01, 0.99] so they are never exactly 0.0 or 1.0,
+    and cannot round to those values, satisfying the OpenEnv Phase-2 validator.
     """
     raw_range = reward_ceiling - reward_floor
     if raw_range < 1.0:

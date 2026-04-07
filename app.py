@@ -5,7 +5,7 @@ from typing import Dict, List
 from src.models import GridAction, GridObservation, GridReward
 from src.environment import OpenGridEnv
 from src.tasks import TASKS
-from src.grader import RobustnessGrader, normalize_score
+from src.grader import RobustnessGrader, normalize_score, _SCORE_EPSILON
 from src.baseline import heuristic_policy, llm_policy
 from src.visualization import generate_dashboard
 import uuid
@@ -164,7 +164,7 @@ def run_grader(session_id: str):
         env = session["env"]
 
     if not rewards:
-        return {"score": 0.0001, "message": "No steps taken yet. Run /step first."}
+        return {"score": _SCORE_EPSILON, "message": "No steps taken yet. Run /step first."}
 
     cumulative = sum(rewards)
     n_steps = len(rewards)
