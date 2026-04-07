@@ -23,3 +23,22 @@ models:
   observation: src.models.GridObservation
   action: src.models.GridAction
   reward: src.models.GridReward
+tasks:
+  - id: task_easy
+    name: Easy Grid (5 buses, 20% renewables)
+    description: Simple balancing task with low renewable penetration
+    grader:
+      endpoint: /grader
+      score_range: [0, 1]
+  - id: task_medium
+    name: Medium Grid (10 buses, 50% renewables)
+    description: Congestion management with moderate renewable mix
+    grader:
+      endpoint: /grader
+      score_range: [0, 1]
+  - id: task_hard
+    name: Hard Grid (14 buses, 80% renewables)
+    description: Volatile supply with high renewable penetration and tight margins
+    grader:
+      endpoint: /grader
+      score_range: [0, 1]
