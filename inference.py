@@ -173,7 +173,7 @@ def run_task(client: OpenAI, env: EnvClient, task_id: str) -> dict:
     history_msgs = []
     rewards = []
     steps_taken = 0
-    score = 0.0
+    score = 0.0001
     success = False
 
     log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
@@ -215,7 +215,7 @@ def run_task(client: OpenAI, env: EnvClient, task_id: str) -> dict:
 
     except Exception as e:
         print(f"[DEBUG] Task {task_id} error: {e}", flush=True)
-        score = 0.0
+        score = 0.0001
         success = False
 
     log_end(success=success, steps=steps_taken, score=score, rewards=rewards)

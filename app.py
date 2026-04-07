@@ -152,8 +152,8 @@ def get_state(session_id: str):
 def run_grader(session_id: str):
     """
     Grade a completed (or in-progress) session.
-    Returns a score between 0.0 and 1.0 using the same normalization
-    as the /baseline endpoint (analytical ceiling + empirical floor).
+    Returns a score strictly in the open interval (0, 1) using the same
+    normalization as the /baseline endpoint (analytical ceiling + empirical floor).
     """
     with _session_lock:
         if session_id not in sessions:
@@ -164,7 +164,7 @@ def run_grader(session_id: str):
         env = session["env"]
 
     if not rewards:
-        return {"score": 0.0, "message": "No steps taken yet. Run /step first."}
+        return {"score": 0.0001, "message": "No steps taken yet. Run /step first."}
 
     cumulative = sum(rewards)
     n_steps = len(rewards)

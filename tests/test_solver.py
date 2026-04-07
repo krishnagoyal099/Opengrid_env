@@ -103,11 +103,11 @@ class TestEnvironment(unittest.TestCase):
 
 class TestGrader(unittest.TestCase):
     def test_grader_score_range(self):
-        """Grader should return score between 0.0 and 1.0."""
+        """Grader should return score strictly in (0, 1) — never 0.0 or 1.0."""
         grader = RobustnessGrader(TASKS["task_easy"])
         result = grader.evaluate_policy(heuristic_policy, n_episodes=1)
-        self.assertGreaterEqual(result["score"], 0.0)
-        self.assertLessEqual(result["score"], 1.0)
+        self.assertGreater(result["score"], 0.0)
+        self.assertLess(result["score"], 1.0)
 
     def test_grader_all_tasks(self):
         """Grader should work on all 3 difficulty levels."""

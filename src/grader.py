@@ -36,19 +36,22 @@ def compute_analytical_ceiling(max_steps: int) -> float:
     return max_steps * 1.2
 
 
+# Validator requires scores strictly in the open interval (0, 1).
+_SCORE_EPSILON = 0.0001
+
+
 def normalize_score(cumulative_reward: float, reward_floor: float, reward_ceiling: float,
                     n1_survival_rate: float = 1.0) -> float:
     """
-    Shared normalization: maps raw cumulative reward to 0.0–1.0.
+    Shared normalization: maps raw cumulative reward to the open interval (0, 1).
     Used by both /grader endpoint and RobustnessGrader for consistency.
 
     - reward_floor: empirical worst-case (random thrashing policy, seeded RNG)
     - reward_ceiling: analytical upper bound (perfect survival + perfect frequency bonus)
     - n1_survival_rate: fraction of episodes without blackout (adds up to 10% bonus)
 
-    Scores above 1.0 are theoretically impossible (ceiling = analytical max).
-    The heuristic baseline typically scores ~0.75–0.90, not 1.0.
-    This allows the benchmark to distinguish good agents from great agents.
+    Scores are clamped to (_SCORE_EPSILON, 1 - _SCORE_EPSILON) so they are
+    never exactly 0.0 or 1.0, satisfying the OpenEnv Phase-2 validator.
     """
     raw_range = reward_ceiling - reward_floor
     if raw_range < 1.0:
@@ -60,8 +63,8 @@ def normalize_score(cumulative_reward: float, reward_floor: float, reward_ceilin
     n1_bonus = n1_survival_rate * 0.1
     score = normalized + n1_bonus
 
-    # Clip to [0.0, 1.0] — ceiling is analytical max, not heuristic
-    score = float(np.clip(score, 0.0, 1.0))
+    # Clamp to open interval (0, 1) — never exactly 0.0 or 1.0
+    score = float(np.clip(score, _SCORE_EPSILON, 1.0 - _SCORE_EPSILON))
 
     return round(score, 4)
 
