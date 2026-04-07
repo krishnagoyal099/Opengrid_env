@@ -37,7 +37,8 @@ def compute_analytical_ceiling(max_steps: int) -> float:
 
 
 # Validator requires scores strictly in the open interval (0, 1).
-_SCORE_EPSILON = 0.0001
+# Using generous epsilon to avoid any floating-point edge cases
+_SCORE_EPSILON = 0.005
 
 
 def normalize_score(cumulative_reward: float, reward_floor: float, reward_ceiling: float,
@@ -66,7 +67,9 @@ def normalize_score(cumulative_reward: float, reward_floor: float, reward_ceilin
     # Clamp to open interval (0, 1) — never exactly 0.0 or 1.0
     score = float(np.clip(score, _SCORE_EPSILON, 1.0 - _SCORE_EPSILON))
 
-    return round(score, 4)
+    # Return WITHOUT rounding to avoid banker's rounding edge cases
+    # round(0.99995, 4) == 1.0 which fails the strict (0,1) check
+    return score
 
 
 class RobustnessGrader:
