@@ -20,25 +20,51 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Serve static assets (CSS, JS)
+# Pre-flight check: verify static directory exists before mounting
 STATIC_DIR = pathlib.Path(__file__).parent / "static"
+if not STATIC_DIR.exists():
+    raise RuntimeError(
+        f"Static directory not found: {STATIC_DIR}. "
+        "Create it with index.html, style.css, and app.js, or disable static serving."
+    )
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # Session storage with TTL
+# Lock guards ALL session reads and writes — not just cleanup — to prevent
+# race conditions under concurrent requests (e.g. two agents stepping
+# simultaneously, or a step racing with a grader call).
 sessions: Dict[str, Dict] = {}
 history: Dict[str, List] = {}
 MAX_SESSIONS = 100
-_session_lock = threading.Lock()  # Guards session mutation under concurrent access
+_session_lock = threading.Lock()
+
+# Grader cache: bounds are expensive (10 rollouts per task), compute once.
+# Double-checked locking prevents duplicate computation under concurrent /grader calls.
+_grader_cache: Dict[str, RobustnessGrader] = {}
+_grader_lock = threading.Lock()
 
 
 def _cleanup_sessions():
-    """Evict oldest sessions if over limit. Thread-safe."""
-    with _session_lock:
-        if len(sessions) > MAX_SESSIONS:
-            oldest = sorted(sessions.keys(), key=lambda k: sessions[k].get('created', 0))
-            for sid in oldest[:len(sessions) - MAX_SESSIONS]:
-                sessions.pop(sid, None)
-                history.pop(sid, None)
+    """Evict oldest sessions if over limit. Caller must hold _session_lock."""
+    if len(sessions) > MAX_SESSIONS:
+        oldest = sorted(sessions.keys(), key=lambda k: sessions[k].get('created', 0))
+        for sid in oldest[:len(sessions) - MAX_SESSIONS]:
+            sessions.pop(sid, None)
+            history.pop(sid, None)
+
+
+def _get_grader(task_id: str) -> RobustnessGrader:
+    """Get or create a cached RobustnessGrader for a task.
+
+    Uses double-checked locking: the fast path (cache hit) is lock-free,
+    but construction is serialized to avoid duplicate _estimate_bounds()
+    calls which each run 10 environment rollouts.
+    """
+    if task_id not in _grader_cache:
+        with _grader_lock:
+            if task_id not in _grader_cache:  # double-check after acquiring lock
+                _grader_cache[task_id] = RobustnessGrader(TASKS[task_id])
+    return _grader_cache[task_id]
 
 
 @app.get("/")
@@ -76,14 +102,14 @@ def reset(task_id: str = "task_easy"):
     if task_id not in TASKS:
         raise HTTPException(404, f"Task '{task_id}' not found. Available: {list(TASKS.keys())}")
 
-    _cleanup_sessions()
-
     env = OpenGridEnv(TASKS[task_id])
     obs = env.reset()
-
     sid = str(uuid.uuid4())
-    sessions[sid] = {"env": env, "created": time.time(), "task_id": task_id, "rewards": []}
-    history[sid] = [obs]
+
+    with _session_lock:
+        _cleanup_sessions()
+        sessions[sid] = {"env": env, "created": time.time(), "task_id": task_id, "rewards": []}
+        history[sid] = [obs]
 
     return {"session_id": sid, "observation": obs.model_dump()}
 
@@ -91,14 +117,18 @@ def reset(task_id: str = "task_easy"):
 @app.post("/step")
 def step(session_id: str, action: GridAction):
     """Execute one step in the environment."""
-    if session_id not in sessions:
-        raise HTTPException(404, "Session not found")
+    with _session_lock:
+        if session_id not in sessions:
+            raise HTTPException(404, "Session not found")
+        env = sessions[session_id]["env"]
 
-    env = sessions[session_id]["env"]
+    # Step is CPU-bound on one env instance — safe outside the lock
+    # since each session is used by one agent at a time.
     obs, reward, done, info = env.step(action)
 
-    history[session_id].append(obs)
-    sessions[session_id]["rewards"].append(reward.value)
+    with _session_lock:
+        history[session_id].append(obs)
+        sessions[session_id]["rewards"].append(reward.value)
 
     return {
         "observation": obs.model_dump(),
@@ -111,20 +141,11 @@ def step(session_id: str, action: GridAction):
 @app.get("/state")
 def get_state(session_id: str):
     """Get current state of a session."""
-    if session_id not in sessions:
-        raise HTTPException(404, "Session not found")
-    return sessions[session_id]["env"].state().model_dump()
-
-
-# Cache grader instances per task (so bounds are computed once)
-_grader_cache: Dict[str, RobustnessGrader] = {}
-
-
-def _get_grader(task_id: str) -> RobustnessGrader:
-    """Get or create a cached RobustnessGrader for a task."""
-    if task_id not in _grader_cache:
-        _grader_cache[task_id] = RobustnessGrader(TASKS[task_id])
-    return _grader_cache[task_id]
+    with _session_lock:
+        if session_id not in sessions:
+            raise HTTPException(404, "Session not found")
+        env = sessions[session_id]["env"]
+    return env.state().model_dump()
 
 
 @app.get("/grader")
@@ -132,15 +153,15 @@ def run_grader(session_id: str):
     """
     Grade a completed (or in-progress) session.
     Returns a score between 0.0 and 1.0 using the same normalization
-    as the /baseline endpoint (empirical reward bounds).
+    as the /baseline endpoint (analytical ceiling + empirical floor).
     """
-    if session_id not in sessions:
-        raise HTTPException(404, "Session not found")
-
-    session = sessions[session_id]
-    rewards = session["rewards"]
-    task_id = session["task_id"]
-    env = session["env"]
+    with _session_lock:
+        if session_id not in sessions:
+            raise HTTPException(404, "Session not found")
+        session = sessions[session_id]
+        rewards = list(session["rewards"])  # snapshot under lock
+        task_id = session["task_id"]
+        env = session["env"]
 
     if not rewards:
         return {"score": 0.0, "message": "No steps taken yet. Run /step first."}
@@ -149,7 +170,6 @@ def run_grader(session_id: str):
     n_steps = len(rewards)
     is_blackout = env.state().is_blackout
 
-    # Use the SAME empirical bounds and normalization as /baseline
     grader = _get_grader(task_id)
     bounds = grader.get_bounds()
     n1_rate = 0.0 if is_blackout else 1.0
@@ -177,13 +197,16 @@ def run_baseline(use_llm: bool = False):
     """
     Run baseline policy on all 3 tasks. Returns 0.0–1.0 scores.
     Default: heuristic (reproducible). Set use_llm=true for LLM agent.
+
+    Uses the same cached grader as /grader — bounds are computed once
+    and reused across all endpoints.
     """
     api_key = os.getenv("HF_TOKEN", os.getenv("OPENAI_API_KEY", ""))
     policy = llm_policy if use_llm and api_key else heuristic_policy
 
     results = {}
     for task_id, config in TASKS.items():
-        grader = RobustnessGrader(config)
+        grader = _get_grader(task_id)  # cached — no duplicate rollouts
         res = grader.evaluate_policy(policy, n_episodes=3)
         results[task_id] = res
 
@@ -193,10 +216,12 @@ def run_baseline(use_llm: bool = False):
 @app.get("/visualize")
 def visualize(session_id: str):
     """Generate a visualization of the current grid state and frequency history."""
-    if session_id not in sessions:
-        raise HTTPException(404, "Session not found")
+    with _session_lock:
+        if session_id not in sessions:
+            raise HTTPException(404, "Session not found")
+        env = sessions[session_id]["env"]
+        hist = list(history[session_id])  # snapshot under lock
 
-    env = sessions[session_id]["env"]
     obs = env.state()
-    img_str = generate_dashboard(history[session_id], obs)
+    img_str = generate_dashboard(hist, obs)
     return {"image_base64": img_str}

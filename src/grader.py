@@ -25,6 +25,13 @@ def compute_analytical_ceiling(max_steps: int) -> float:
     and zero action cost.
 
     ceiling = max_steps * (1.0 + 0.2) = max_steps * 1.2
+
+    NOTE: The +0.2 frequency bonus requires freq_dev < 0.1 Hz, which needs
+    |P_slack| < 0.04 * S_total (from droop model). On high-renewable tasks
+    (task_hard) where slack routinely absorbs >50 MW of imbalance, this band
+    may be structurally inaccessible. The effective ceiling on such tasks is
+    closer to max_steps * 1.0 = 50.0. Scores remain comparable across agents
+    on the same task — the ceiling just compresses the achievable range.
     """
     return max_steps * 1.2
 
@@ -98,10 +105,15 @@ class RobustnessGrader:
         thrash_rng = np.random.default_rng(seed=12345)
 
         floors = []
+        base_seed = self.config.get('seed', 42)
 
-        for _ in range(n_samples):
+        for i in range(n_samples):
             # Floor: adversarial random topology thrashing (worst reasonable behavior)
-            env = OpenGridEnv(self.config)
+            # Vary the environment seed across episodes so the floor reflects both
+            # policy stochasticity AND environment stochasticity (different wind/load
+            # trajectories), not just 10 thrash patterns on one fixed trajectory.
+            config_with_seed = {**self.config, 'seed': base_seed + i}
+            env = OpenGridEnv(config_with_seed)
             obs = env.reset()
             done = False
             ep_reward = 0

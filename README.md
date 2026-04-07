@@ -135,6 +135,8 @@ Previous versions used the heuristic policy as the ceiling, which caused **every
 - **0.50–0.85** = reasonable agent
 - **< 0.50** = poor performance
 
+> **Ceiling caveat:** The +0.2 frequency bonus requires `freq_dev < 0.1 Hz`, which needs `|P_slack| < 0.04 × S_total` (from droop model). On high-renewable tasks (`task_hard`), the slack bus routinely absorbs >50 MW of imbalance, making this band structurally inaccessible. The effective ceiling on such tasks is closer to `max_steps × 1.0 = 50.0`. Scores remain comparable across agents on the same task — the ceiling compresses the achievable range, not the ranking.
+
 ### Baseline Scores
 
 Heuristic baseline (proportional frequency control, no topology switching):
@@ -158,8 +160,9 @@ def _random_thrash_policy(obs, rng):
             # Open the line → likely causes islanding/blackout
 ```
 
-- **Seeded RNG** (`seed=12345`) — floor is deterministic across runs
+- **Seeded RNG** (`seed=12345`) — thrash policy is deterministic across runs
 - **10 samples** — reduces variance in `mean - std` estimate
+- **Environment-diverse** — each floor episode uses a different environment seed (`base_seed + i`) to capture both policy and wind/load stochasticity
 - **Conservative bound** — `floor = mean(samples) - std(samples)`
 
 ### Reproducibility Guarantees
@@ -168,7 +171,7 @@ def _random_thrash_policy(obs, rng):
 |---|---|
 | Task grids | Seeded procedural generation (`np.random.default_rng`) |
 | Wind variability | Per-episode RNG (same seed → same wind pattern) |
-| Floor estimation | Seeded thrash policy RNG + 10 samples |
+| Floor estimation | Seeded thrash policy RNG + 10 diverse-seeded episodes |
 | Ceiling | Analytical formula (no randomness) |
 | Scoring | Shared `normalize_score()` function across all endpoints |
 
@@ -283,8 +286,9 @@ opengrid/
 - Floor estimation uses seeded RNG — deterministic across process lifetimes
 
 ### Thread Safety
-- Session eviction uses `threading.Lock` to prevent race conditions under concurrent access
-- Safe for both single-worker and multi-worker deployments
+- **Session Access**: A strict `threading.Lock` guards all session reads and writes across `/step`, `/grader`, and `/state` preventing race conditions under concurrent access.
+- **Grader Cache**: Double-checked locking prevents redundant environments rollouts during concurrent bounds estimation.
+- Fully safe for concurrent evaluations in both single-worker and multi-worker deployments.
 
 ### Task Generation Guarantees
 - Every grid has at least 30% load buses (prevents degenerate all-generation grids)

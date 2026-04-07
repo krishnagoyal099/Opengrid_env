@@ -28,7 +28,7 @@ dependencies = [
 Homepage = "https://github.com/K446/opengrid"
 
 [project.scripts]
-opengrid-server = "server.app:main"
+server = "server.app:main"
 
 [tool.setuptools.packages.find]
 include = ["src*", "server*"]
