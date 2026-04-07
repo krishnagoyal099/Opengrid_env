@@ -210,7 +210,7 @@ def run_task(client: OpenAI, env: EnvClient, task_id: str) -> dict:
 
         # Get final grade from the environment
         grade_result = env.grade()
-        score = grade_result.get("score", 0.0)
+        score = grade_result.get("score", 0.0001)
         success = score >= SUCCESS_SCORE_THRESHOLD
 
     except Exception as e:
