@@ -1,4 +1,6 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from typing import Dict, List
 from src.models import GridAction, GridObservation, GridReward
 from src.environment import OpenGridEnv
@@ -9,6 +11,8 @@ from src.visualization import generate_dashboard
 import uuid
 import os
 import time
+import pathlib
+import threading
 
 app = FastAPI(
     title="OpenGrid Environment",
@@ -16,24 +20,36 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Serve static assets (CSS, JS)
+STATIC_DIR = pathlib.Path(__file__).parent / "static"
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
 # Session storage with TTL
 sessions: Dict[str, Dict] = {}
 history: Dict[str, List] = {}
 MAX_SESSIONS = 100
+_session_lock = threading.Lock()  # Guards session mutation under concurrent access
 
 
 def _cleanup_sessions():
-    """Evict oldest sessions if over limit."""
-    if len(sessions) > MAX_SESSIONS:
-        oldest = sorted(sessions.keys(), key=lambda k: sessions[k].get('created', 0))
-        for sid in oldest[:len(sessions) - MAX_SESSIONS]:
-            sessions.pop(sid, None)
-            history.pop(sid, None)
+    """Evict oldest sessions if over limit. Thread-safe."""
+    with _session_lock:
+        if len(sessions) > MAX_SESSIONS:
+            oldest = sorted(sessions.keys(), key=lambda k: sessions[k].get('created', 0))
+            for sid in oldest[:len(sessions) - MAX_SESSIONS]:
+                sessions.pop(sid, None)
+                history.pop(sid, None)
 
 
 @app.get("/")
 def root():
-    """Health check endpoint."""
+    """Serve the interactive dashboard."""
+    return FileResponse(str(STATIC_DIR / "index.html"))
+
+
+@app.get("/health")
+def health():
+    """Health check endpoint (JSON)."""
     return {"status": "OpenGrid Running", "version": "1.0.0", "docs": "/docs"}
 
 

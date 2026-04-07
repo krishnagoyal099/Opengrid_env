@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenGrid — Power Grid Simulation</title>
+    <meta name="description" content="Real-time renewable energy grid load-balancing simulation environment for AI agents">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css?v=4">
+</head>
+<body>
+
+    <!-- Header -->
+    <header id="app-header">
+        <div class="header-left">
+            <img src="/static/logo.png" alt="OpenGrid Logo" class="app-logo" width="32" height="32" style="border-radius:6px; object-fit: contain;">
+            <span class="logo-text">OpenGrid</span>
+            <span class="version-badge">v1.0.0</span>
+        </div>
+        <div class="header-center">
+            <div class="status-indicator" id="status-indicator">
+                <span class="status-dot"></span>
+                <span class="status-text">Idle</span>
+            </div>
+        </div>
+        <div class="header-right">
+            <a href="/docs" class="header-link" target="_blank">API Docs</a>
+            <a href="/tasks" class="header-link" target="_blank">Tasks</a>
+        </div>
+    </header>
+
+    <main id="app-main">
+
+        <!-- Metrics Row -->
+        <section class="metrics-row" id="metrics-row">
+            <div class="metric-card" id="mc-frequency">
+                <div class="metric-top">
+                    <span class="metric-label">Frequency</span>
+                    <canvas class="sparkline" id="spark-freq" width="80" height="28"></canvas>
+                </div>
+                <div class="metric-big">
+                    <span class="metric-value" id="val-frequency">--</span>
+                    <span class="metric-suffix">Hz</span>
+                </div>
+                <div class="metric-bar"><div class="metric-bar-fill" id="bar-frequency"></div></div>
+            </div>
+            <div class="metric-card" id="mc-timestep">
+                <div class="metric-top">
+                    <span class="metric-label">Timestep</span>
+                    <span class="metric-delta" id="delta-timestep"></span>
+                </div>
+                <div class="metric-big">
+                    <span class="metric-value" id="val-timestep">--</span>
+                    <span class="metric-suffix">/ 50</span>
+                </div>
+                <div class="metric-bar"><div class="metric-bar-fill" id="bar-timestep"></div></div>
+            </div>
+            <div class="metric-card" id="mc-reward">
+                <div class="metric-top">
+                    <span class="metric-label">Cumulative Reward</span>
+                    <canvas class="sparkline" id="spark-reward" width="80" height="28"></canvas>
+                </div>
+                <div class="metric-big">
+                    <span class="metric-value" id="val-reward">--</span>
+                    <span class="metric-suffix">pts</span>
+                </div>
+                <div class="metric-bar"><div class="metric-bar-fill" id="bar-reward"></div></div>
+            </div>
+            <div class="metric-card" id="mc-score">
+                <div class="metric-top">
+                    <span class="metric-label">Score</span>
+                    <span class="metric-delta" id="delta-score" title="Analytical ceiling: perfect survival + frequency bonus every step"></span>
+                </div>
+                <div class="metric-big">
+                    <span class="metric-value" id="val-score">--</span>
+                    <span class="metric-suffix">/ 1.0</span>
+                </div>
+                <div class="metric-bar"><div class="metric-bar-fill" id="bar-score"></div></div>
+            </div>
+            <div class="metric-card" id="mc-status">
+                <div class="metric-top">
+                    <span class="metric-label">Grid Status</span>
+                </div>
+                <div class="metric-big">
+                    <span class="metric-value" id="val-blackout">--</span>
+                </div>
+                <div class="metric-bar"><div class="metric-bar-fill" id="bar-blackout"></div></div>
+            </div>
+        </section>
+
+        <!-- Main Content -->
+        <div class="main-grid">
+
+            <!-- Left: Topology -->
+            <section class="card card-topology" id="card-topology">
+                <div class="card-header">
+                    <h2>Grid Topology</h2>
+                    <div class="legend">
+                        <span class="legend-item"><span class="legend-dot" style="background:#c8956c"></span>Slack</span>
+                        <span class="legend-item"><span class="legend-dot" style="background:#8ab068"></span>Generator</span>
+                        <span class="legend-item"><span class="legend-dot" style="background:#d4645c"></span>Load</span>
+                        <span class="legend-item"><span class="legend-dot" style="background:#9b7fd4"></span>Battery</span>
+                        <span class="legend-item"><span class="legend-dot" style="background:#d4a554"></span>Solar</span>
+                        <span class="legend-item"><span class="legend-dot" style="background:#5a9fb8"></span>Wind</span>
+                    </div>
+                </div>
+                <canvas id="topology-canvas"></canvas>
+                <div class="tooltip" id="topology-tooltip"></div>
+            </section>
+
+            <!-- Right Column -->
+            <div class="right-col">
+                <section class="card card-chart" id="card-freq-chart">
+                    <div class="card-header"><h2>Frequency History</h2></div>
+                    <canvas id="freq-chart"></canvas>
+                </section>
+                <section class="card card-chart" id="card-reward-chart">
+                    <div class="card-header"><h2>Reward History</h2></div>
+                    <canvas id="reward-chart"></canvas>
+                </section>
+            </div>
+        </div>
+
+        <!-- Bottom Section -->
+        <div class="bottom-grid">
+
+            <!-- Controls -->
+            <section class="card card-controls" id="card-controls">
+                <div class="card-header"><h2>Controls</h2></div>
+                <div class="controls-body">
+                    <div class="ctrl-group">
+                        <label for="task-select">Task</label>
+                        <select id="task-select">
+                            <option value="task_easy">Easy  (5 buses, 20% renewable)</option>
+                            <option value="task_medium">Medium  (10 buses, 50% renewable)</option>
+                            <option value="task_hard">Hard  (14 buses, 70% renewable)</option>
+                        </select>
+                    </div>
+                    <div class="ctrl-group">
+                        <label for="speed-select">Interval</label>
+                        <select id="speed-select">
+                            <option value="2000">Slow  (2 s)</option>
+                            <option value="1000" selected>Normal  (1 s)</option>
+                            <option value="500">Fast  (0.5 s)</option>
+                            <option value="200">Turbo  (0.2 s)</option>
+                        </select>
+                    </div>
+                    <div class="btn-grid">
+                        <button class="btn btn-reset" id="btn-reset" onclick="resetEnv()">Reset</button>
+                        <button class="btn btn-step" id="btn-step" onclick="stepOnce()" disabled>Step</button>
+                        <button class="btn btn-auto" id="btn-auto" onclick="toggleAutoStep()" disabled>Auto Run</button>
+                        <button class="btn btn-grade" id="btn-grade" onclick="gradeSession()" disabled>Grade</button>
+                    </div>
+                    <div class="session-row">
+                        <span class="session-label">Session</span>
+                        <code id="session-id-display">None</code>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Bus Status -->
+            <section class="card card-table" id="card-buses">
+                <div class="card-header"><h2>Bus Status</h2></div>
+                <div class="table-scroll">
+                    <table id="bus-table">
+                        <thead><tr><th>ID</th><th>Type</th><th>P Injection</th><th>SoC</th><th>Ramp</th></tr></thead>
+                        <tbody id="bus-table-body">
+                            <tr><td colspan="5" class="empty-msg">Reset a task to begin</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Line Status -->
+            <section class="card card-table" id="card-lines">
+                <div class="card-header"><h2>Transmission Lines</h2></div>
+                <div class="table-scroll">
+                    <table id="line-table">
+                        <thead><tr><th>Line</th><th>Status</th><th>Flow</th><th>Loading</th><th>CD</th></tr></thead>
+                        <tbody id="line-table-body">
+                            <tr><td colspan="5" class="empty-msg">Reset a task to begin</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
+        <!-- Reward Breakdown -->
+        <section class="card card-breakdown" id="panel-breakdown" style="display:none">
+            <div class="card-header"><h2>Last Step  —  Reward Breakdown</h2></div>
+            <div class="breakdown-row" id="breakdown-cards"></div>
+        </section>
+    </main>
+
+    <!-- Event Log -->
+    <section class="card card-log" id="card-log">
+        <div class="card-header">
+            <h2>Event Log</h2>
+            <button class="btn-tiny" onclick="clearLog()">Clear</button>
+        </div>
+        <div class="log-body" id="log-body"></div>
+    </section>
+
+    <script src="/static/app.js?v=4"></script>
+</body>
+</html>

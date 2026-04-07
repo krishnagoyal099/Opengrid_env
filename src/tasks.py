@@ -47,6 +47,8 @@ def generate_procedural_grid(difficulty: str = "easy", seed: int = 42):
     for _ in range(remaining):
         r = rng.random()
         if r < renewable_mix:
+            # str() required: rng.choice returns numpy.str_, which survives most
+            # comparisons but fails strict isinstance(x, str) checks downstream.
             assigned.append(str(rng.choice(['solar', 'wind'])))
         elif r < renewable_mix + 0.15:
             assigned.append('battery')

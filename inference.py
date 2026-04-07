@@ -14,7 +14,6 @@ Emits structured [START], [STEP], [END] logs to stdout.
 import os
 import sys
 import json
-import asyncio
 import httpx
 
 from openai import OpenAI

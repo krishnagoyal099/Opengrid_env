@@ -129,3 +129,30 @@ class TestBaseline(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestReproducibility(unittest.TestCase):
+    def test_floor_deterministic(self):
+        """Two calls to _estimate_bounds should produce identical floors (seeded RNG)."""
+        grader1 = RobustnessGrader(TASKS["task_easy"])
+        grader1._estimate_bounds(n_samples=3)
+
+        grader2 = RobustnessGrader(TASKS["task_easy"])
+        grader2._estimate_bounds(n_samples=3)
+
+        self.assertEqual(grader1.reward_floor, grader2.reward_floor)
+
+    def test_ceiling_is_analytical(self):
+        """Ceiling should be max_steps * 1.2, not an empirical heuristic estimate."""
+        from src.grader import compute_analytical_ceiling
+        grader = RobustnessGrader(TASKS["task_easy"])
+        bounds = grader.get_bounds()
+        expected_ceiling = compute_analytical_ceiling(TASKS["task_easy"]["max_steps"])
+        self.assertEqual(bounds["reward_ceiling"], expected_ceiling)
+
+    def test_heuristic_score_below_one(self):
+        """With analytical ceiling, heuristic should score < 1.0 (not degenerate)."""
+        grader = RobustnessGrader(TASKS["task_easy"])
+        result = grader.evaluate_policy(heuristic_policy, n_episodes=1)
+        self.assertLess(result["score"], 1.0)
+        self.assertGreater(result["score"], 0.0)

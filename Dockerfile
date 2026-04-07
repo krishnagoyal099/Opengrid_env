@@ -26,7 +26,7 @@ EXPOSE 7860
 
 # Healthcheck
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s \
-    CMD python -c "import httpx; httpx.get('http://localhost:7860/').raise_for_status()" || exit 1
+    CMD python -c "import httpx; httpx.get('http://localhost:7860/health').raise_for_status()" || exit 1
 
 # Run the server
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7860"]

@@ -8,6 +8,10 @@ app_file: app.py
 pinned: false
 ---
 
+<p align="center">
+  <img src="static/logo.png" alt="OpenGrid Logo" width="120">
+</p>
+
 # OpenGrid — Renewable Energy Grid Load Balancing Environment
 
 [![OpenEnv](https://img.shields.io/badge/OpenEnv-compatible-blue)](https://github.com/openenv)
@@ -101,9 +105,72 @@ All tasks run for **50 timesteps** per episode. Graders score performance 0.0–
 | Component | Description |
 |---|---|
 | `survival` | +1.0 per step (or -100.0 on blackout) |
-| `frequency` | Bonus for tight control (<0.1 Hz deviation), penalty for large deviations |
+| `frequency` | Bonus for tight control (<0.1 Hz deviation: +0.2), penalty for large deviations (capped at -1.5/step) |
 | `overload` | Quadratic penalty for lines with rho > 1.0, small penalty for rho > 0.8 |
 | `action_cost` | -0.5 per topology switch (discourages unnecessary switching) |
+
+**Frequency penalty cap:** Maximum -1.5 per step → worst case over 50 steps = -75. Blackout = -100. This ensures `survive_bad > blackout_good` mathematically.
+
+---
+
+## 📊 Scoring Methodology
+
+### How Scores Are Computed
+
+Scores are normalized to **0.0–1.0** using the shared `normalize_score()` function. Both `/grader` and `/baseline` endpoints use identical normalization:
+
+$$s = \frac{R_{agent} - R_{floor}}{R_{ceiling} - R_{floor}} + 0.1 \times \text{N1\_survival\_rate}$$
+
+| Bound | Method | Description |
+|---|---|---|
+| **Floor** | Empirical (seeded) | Adversarial random-topology-thrashing policy. Uses `np.random.default_rng(seed=12345)` for reproducibility. Estimated over 10 episodes (`mean - std`). |
+| **Ceiling** | Analytical | `max_steps × 1.2` = perfect survival (+1.0) + perfect frequency bonus (+0.2) every step. This is the theoretical maximum reward. |
+
+### Why Analytical Ceiling?
+
+Previous versions used the heuristic policy as the ceiling, which caused **every agent matching the heuristic to score 1.0** — making it impossible to distinguish good agents from great ones. The analytical ceiling sets the upper bound at the theoretical maximum, so:
+
+- **1.0** = perfect agent (impossible to beat)
+- **0.85–0.90** = excellent (matches or exceeds heuristic baseline)
+- **0.50–0.85** = reasonable agent
+- **< 0.50** = poor performance
+
+### Baseline Scores
+
+Heuristic baseline (proportional frequency control, no topology switching):
+
+| Task | Score | Avg Raw Reward | N-1 Survival | Reward Floor | Reward Ceiling |
+|---|---|---|---|---|---|
+| `task_easy` | ~0.85 | ~28 | 100% | ~-103 | 60.0 |
+| `task_medium` | ~0.89 | ~50 | 100% | ~-109 | 60.0 |
+| `task_hard` | ~0.87 | ~50 | 100% | ~-105 | 60.0 |
+
+> **Note:** The heuristic no longer scores 1.0. An LLM agent that employs active topology management and predictive battery scheduling can score *higher* than the heuristic baseline. Reproduce scores with `python get_scores.py`.
+
+### Floor Estimation Details
+
+The reward floor is estimated using an **adversarial random thrashing policy** that randomly opens ~30% of connected lines each step, causing cascading failures:
+
+```python
+def _random_thrash_policy(obs, rng):
+    for line in obs.lines:
+        if line.connected and rng.random() > 0.7:
+            # Open the line → likely causes islanding/blackout
+```
+
+- **Seeded RNG** (`seed=12345`) — floor is deterministic across runs
+- **10 samples** — reduces variance in `mean - std` estimate
+- **Conservative bound** — `floor = mean(samples) - std(samples)`
+
+### Reproducibility Guarantees
+
+| Component | Mechanism |
+|---|---|
+| Task grids | Seeded procedural generation (`np.random.default_rng`) |
+| Wind variability | Per-episode RNG (same seed → same wind pattern) |
+| Floor estimation | Seeded thrash policy RNG + 10 samples |
+| Ceiling | Analytical formula (no randomness) |
+| Scoring | Shared `normalize_score()` function across all endpoints |
 
 ---
 
@@ -158,28 +225,13 @@ python inference.py
 
 ---
 
-## 📊 Baseline Scores
-
-Heuristic baseline (proportional frequency control, no topology switching):
-
-| Task | Score | Avg Raw Reward | N-1 Survival | Reward Floor | Reward Ceiling |
-|---|---|---|---|---|---|
-| `task_easy` | 1.00 | 28.4 | 100% | -102.5 | 28.4 |
-| `task_medium` | 1.00 | 49.8 | 100% | -108.5 | 49.8 |
-| `task_hard` | 1.00 | 50.3 | 100% | -104.9 | 50.3 |
-
-> **Scoring methodology:** The reward floor is estimated from an adversarial random-topology-thrashing policy. The ceiling is the heuristic policy itself. Scores are normalized to 0.0–1.0 using the shared `normalize_score()` function. Both `/grader` and `/baseline` endpoints use identical normalization.
->
-> **Note:** The heuristic scores 1.0 because it *defines* the ceiling. An LLM agent that employs active topology management and predictive battery scheduling can achieve higher raw rewards. Reproduce these scores with `python get_scores.py`.
-
----
-
 ## 📁 Project Structure
 
 ```
 opengrid/
 ├── app.py                 # FastAPI application with all endpoints
 ├── inference.py           # LLM inference script (structured logging)
+├── inference_output.txt   # Sample inference log (UTF-8, readable)
 ├── openenv.yaml           # OpenEnv specification
 ├── Dockerfile             # Container configuration
 ├── requirements.txt       # Python dependencies
@@ -190,12 +242,12 @@ opengrid/
 │   ├── environment.py     # Core environment (reset/step/state)
 │   ├── physics.py         # DC power flow solver
 │   ├── tasks.py           # Procedural grid generation (3 difficulties)
-│   ├── grader.py          # Empirical scoring (0.0–1.0)
+│   ├── grader.py          # Scoring: analytical ceiling + empirical floor
 │   ├── baseline.py        # Heuristic + LLM policies
 │   └── visualization.py   # Grid topology & frequency plots
 └── tests/
     ├── __init__.py
-    └── test_solver.py     # Unit tests (11 tests)
+    └── test_solver.py     # Unit tests
 ```
 
 ---
@@ -204,7 +256,8 @@ opengrid/
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/` | GET | Health check |
+| `/` | GET | Interactive dashboard |
+| `/health` | GET | Health check (JSON) |
 | `/tasks` | GET | List available tasks |
 | `/reset?task_id=task_easy` | POST | Start new episode |
 | `/step?session_id=...` | POST | Execute action (body: GridAction JSON) |
@@ -227,6 +280,16 @@ opengrid/
 - All tasks use seeded procedural generation (`np.random.default_rng`)
 - Per-episode RNG for stochastic elements (wind variability)
 - Same seed → identical initial conditions and dynamics
+- Floor estimation uses seeded RNG — deterministic across process lifetimes
+
+### Thread Safety
+- Session eviction uses `threading.Lock` to prevent race conditions under concurrent access
+- Safe for both single-worker and multi-worker deployments
+
+### Task Generation Guarantees
+- Every grid has at least 30% load buses (prevents degenerate all-generation grids)
+- Every grid has at least 1 battery (ensures controllability)
+- `rng.choice` results wrapped in `str()` to prevent `numpy.str_` type mismatches
 
 ---
 
