@@ -1,3 +1,4 @@
+import math
 import numpy as np
 from typing import Dict, Callable, List
 from .environment import OpenGridEnv
@@ -39,7 +40,33 @@ def compute_analytical_ceiling(max_steps: int) -> float:
 # Validator requires scores strictly in the open interval (0, 1).
 # Using wide epsilon so that even aggressive rounding (e.g. round(x, 1))
 # can never produce exactly 0.0 or 1.0.
-_SCORE_EPSILON = 0.01
+_SCORE_EPSILON = 0.02
+_SCORE_MIN = _SCORE_EPSILON        # 0.02
+_SCORE_MAX = 1.0 - _SCORE_EPSILON  # 0.98
+
+
+def _safe_float(x: float) -> float:
+    """Convert to plain Python float; replace NaN/Inf with midpoint."""
+    v = float(x)
+    if not math.isfinite(v):
+        return 0.5  # safe fallback inside (0, 1)
+    return v
+
+
+def _clamp_score(score: float) -> float:
+    """Clamp a score to the open interval (0, 1) using Python-native min/max.
+
+    This avoids any numpy-scalar serialisation quirks and guarantees a plain
+    Python float that JSON-encodes to a normal number.
+    """
+    score = _safe_float(score)
+    score = max(_SCORE_MIN, min(_SCORE_MAX, score))
+    # Truncate (not round) to 4 decimal places to avoid
+    # round(0.98500…, 4) == 0.985 becoming 0.99 after further rounding.
+    score = math.floor(score * 10000) / 10000
+    # Final safety: ensure truncation didn't land on a boundary
+    score = max(_SCORE_MIN, min(_SCORE_MAX, score))
+    return score
 
 
 def normalize_score(cumulative_reward: float, reward_floor: float, reward_ceiling: float,
@@ -52,25 +79,21 @@ def normalize_score(cumulative_reward: float, reward_floor: float, reward_ceilin
     - reward_ceiling: analytical upper bound (perfect survival + perfect frequency bonus)
     - n1_survival_rate: fraction of episodes without blackout (adds up to 10% bonus)
 
-    Scores are clamped to [0.01, 0.99] so they are never exactly 0.0 or 1.0,
+    Scores are clamped to [0.02, 0.98] so they are never exactly 0.0 or 1.0,
     and cannot round to those values, satisfying the OpenEnv Phase-2 validator.
     """
-    raw_range = reward_ceiling - reward_floor
+    raw_range = _safe_float(reward_ceiling) - _safe_float(reward_floor)
     if raw_range < 1.0:
         raw_range = 1.0  # Prevent division by near-zero
 
-    normalized = (cumulative_reward - reward_floor) / raw_range
+    cumulative_reward = _safe_float(cumulative_reward)
+    normalized = (cumulative_reward - _safe_float(reward_floor)) / raw_range
 
     # N-1 bonus: up to 10% boost for surviving without blackout
-    n1_bonus = n1_survival_rate * 0.1
+    n1_bonus = float(n1_survival_rate) * 0.1
     score = normalized + n1_bonus
 
-    # Clamp to open interval (0, 1) — never exactly 0.0 or 1.0
-    score = float(np.clip(score, _SCORE_EPSILON, 1.0 - _SCORE_EPSILON))
-
-    # Return WITHOUT rounding to avoid banker's rounding edge cases
-    # round(0.99995, 4) == 1.0 which fails the strict (0,1) check
-    return score
+    return _clamp_score(score)
 
 
 class RobustnessGrader:

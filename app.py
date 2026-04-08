@@ -5,7 +5,7 @@ from typing import Dict, List
 from src.models import GridAction, GridObservation, GridReward
 from src.environment import OpenGridEnv
 from src.tasks import TASKS
-from src.grader import RobustnessGrader, normalize_score, _SCORE_EPSILON
+from src.grader import RobustnessGrader, normalize_score, _SCORE_EPSILON, _clamp_score
 from src.baseline import heuristic_policy, llm_policy
 from src.visualization import generate_dashboard
 import uuid
@@ -180,6 +180,9 @@ def run_grader(session_id: str):
         reward_ceiling=bounds["reward_ceiling"],
         n1_survival_rate=n1_rate
     )
+
+    # Defense-in-depth: clamp again at the API boundary
+    score = _clamp_score(score)
 
     return {
         "score": score,

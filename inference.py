@@ -14,6 +14,7 @@ Emits structured [START], [STEP], [END] logs to stdout.
 import os
 import sys
 import json
+import math
 import httpx
 
 from openai import OpenAI
@@ -76,11 +77,24 @@ def log_step(step: int, action: str, reward: float, done: bool, error=None):
     print(f'[STEP] {json.dumps(entry)}', flush=True)
 
 
+def clamp_score(s: float) -> float:
+    """Ensure score is strictly in (0, 1). Mirrors grader._clamp_score."""
+    try:
+        s = float(s)
+    except (TypeError, ValueError):
+        return 0.5
+    if not math.isfinite(s):
+        return 0.5
+    s = max(0.02, min(0.98, s))
+    s = math.floor(s * 10000) / 10000
+    return max(0.02, min(0.98, s))
+
+
 def log_end(success: bool, steps: int, score: float, rewards: list):
     entry = {
         "success": success,
         "steps": steps,
-        "score": round(score, 4),
+        "score": clamp_score(score),
         "rewards": [round(r, 4) for r in rewards],
     }
     print(f'[END] {json.dumps(entry)}', flush=True)
@@ -173,7 +187,7 @@ def run_task(client: OpenAI, env: EnvClient, task_id: str) -> dict:
     history_msgs = []
     rewards = []
     steps_taken = 0
-    score = 0.0001
+    score = 0.05
     success = False
 
     log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
@@ -210,12 +224,12 @@ def run_task(client: OpenAI, env: EnvClient, task_id: str) -> dict:
 
         # Get final grade from the environment
         grade_result = env.grade()
-        score = grade_result.get("score", 0.0001)
+        score = clamp_score(grade_result.get("score", 0.5))
         success = score >= SUCCESS_SCORE_THRESHOLD
 
     except Exception as e:
         print(f"[DEBUG] Task {task_id} error: {e}", flush=True)
-        score = 0.0001
+        score = 0.05
         success = False
 
     log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
