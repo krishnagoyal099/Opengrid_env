@@ -12,291 +12,294 @@ pinned: false
   <img src="static/logo.png" alt="OpenGrid Logo" width="120">
 </p>
 
-# OpenGrid — Renewable Energy Grid Load Balancing Environment
+<h1 align="center">OpenGrid ⚡</h1>
+<p align="center"><strong>Renewable Energy Grid Load-Balancing Environment for AI Agents</strong></p>
 
-[![OpenEnv](https://img.shields.io/badge/OpenEnv-compatible-blue)](https://github.com/openenv)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-
-## 🔋 Environment Description
-
-**OpenGrid** simulates the real-world challenge of **renewable energy grid load balancing** — a task performed daily by grid operators worldwide. As renewable penetration increases (solar, wind), grid stability becomes harder to maintain due to supply volatility and the intermittent nature of these sources.
-
-An AI agent must act as a **grid controller**, making decisions about:
-- **Generator dispatch** — ramping conventional generators up/down
-- **Battery storage management** — charging/discharging to buffer supply fluctuations
-- **Transmission topology switching** — opening/closing lines to manage congestion
-
-The environment uses **DC power flow analysis** with proper physics (B-matrix formulation, slack bus balancing) and a **droop-based frequency model** that ties frequency deviation to slack bus injection.
-
-### Why This Matters
-- Grid operators handle this task 24/7 in real control rooms
-- Increasing renewable mix (20% → 80%) makes the problem progressively harder
-- Poor decisions cause cascading failures and blackouts — exactly what agents must learn to avoid
-- This is a genuine $100B+ industry problem, not a toy
+<p align="center">
+  <a href="https://huggingface.co/spaces/K446/Opengrid"><img src="https://img.shields.io/badge/🤗%20Live%20Demo-HuggingFace%20Space-yellow" alt="Live Demo"></a>
+  <a href="https://github.com/krishnagoyal099/Opengrid_env"><img src="https://img.shields.io/badge/GitHub-Repository-181717?logo=github" alt="GitHub"></a>
+  <a href="https://github.com/openenv"><img src="https://img.shields.io/badge/OpenEnv-compatible-blue" alt="OpenEnv"></a>
+  <a href="https://www.python.org"><img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python 3.10+"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT"></a>
+</p>
 
 ---
 
-## 🎮 Action Space
+## What is OpenGrid?
 
-Actions are represented as a `GridAction` Pydantic model:
+OpenGrid is a **reinforcement learning environment** where an AI agent controls a power grid. The agent's job is to keep the lights on — literally — by balancing electricity supply and demand in real-time while managing renewable energy sources like solar and wind.
 
-```python
-class GridAction(BaseModel):
-    bus_adjustments: List[BusAdjustment] = []   # Power injection changes
-    topology_actions: List[TopologyAction] = []  # Line switching
+This is the same problem real grid operators solve 24/7 in control rooms around the world. As countries adopt more renewable energy, this problem gets harder because solar and wind are unpredictable. OpenGrid lets AI agents learn to handle this challenge across three difficulty levels.
+
+> **🔗 Try it live:** [huggingface.co/spaces/K446/Opengrid](https://huggingface.co/spaces/K446/Opengrid)
+
+---
+
+## How It Works
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     GAME LOOP                           │
+│                                                         │
+│   Agent observes grid state (frequency, line loads)     │
+│              │                                          │
+│              ▼                                          │
+│   Agent chooses action (adjust generators, batteries,   │
+│   or switch transmission lines)                         │
+│              │                                          │
+│              ▼                                          │
+│   Environment simulates physics (DC power flow)         │
+│              │                                          │
+│              ▼                                          │
+│   Agent receives reward (+1 for survival, bonuses for   │
+│   tight frequency control, penalties for overloads)     │
+│              │                                          │
+│              ▼                                          │
+│   Repeat for 50 steps — or until blackout!              │
+└─────────────────────────────────────────────────────────┘
 ```
 
-| Field | Type | Description |
-|---|---|---|
-| `bus_adjustments[].bus_id` | `int` | Target bus ID |
-| `bus_adjustments[].delta` | `float` | MW change (positive = inject more, negative = withdraw) |
-| `topology_actions[].line_id` | `str` | Target line ID (e.g., `"L_0_1"`) |
-| `topology_actions[].action` | `"open" \| "close"` | Switch line state (3-step cooldown) |
-
-**Constraints:**
-- Battery buses: delta clamped by state-of-charge (0–50 MWh)
-- Generator/slack buses: delta clamped by ramp rate (±20 MW/step) and min/max limits
-- Load, solar, wind buses: adjustments ignored (uncontrollable)
-- Topology switches have a 3-step cooldown after each toggle
+The agent interacts with the environment through a **REST API** — send actions, receive observations. Any language or framework that can make HTTP requests can play.
 
 ---
 
-## 👁️ Observation Space
+## Three Difficulty Levels
 
-Observations are returned as a `GridObservation` Pydantic model:
+| Task | Grid Size | Renewable Mix | What Makes It Hard |
+|---|---|---|---|
+| `task_easy` | 5 buses | 20% | Small grid — focus on frequency control basics |
+| `task_medium` | 10 buses | 50% | Larger grid with volatile renewables + congestion |
+| `task_hard` | 14 buses | 70% | Highly volatile supply, many lines, coordinated control needed |
 
-```python
-class GridObservation(BaseModel):
-    timestep: int                    # Current step in the episode
-    grid_frequency: float            # Hz — target is 50.0
-    buses: List[BusState]            # All bus states
-    lines: List[LineStatus]          # All line states with loading
-    cooldowns: Dict[str, int]        # Remaining cooldown per line
-    is_blackout: bool                # True if grid islanded
-```
-
-| Bus State Field | Description |
-|---|---|
-| `type` | `"slack"`, `"generator"`, `"load"`, `"battery"`, `"solar"`, `"wind"` |
-| `p_injection` | Current power injection (MW), negative for loads |
-| `soc` | State-of-charge (batteries only, 0–50 MWh) |
-| `ramp_rate` | Maximum MW change per step |
-
-| Line State Field | Description |
-|---|---|
-| `connected` | Whether the line is active |
-| `flow` | Current power flow (MW) |
-| `rho` | Loading percentage (flow/capacity). >1.0 = overloaded |
+All tasks run for **50 timesteps**. Scores range from **0.02 to 0.98** (higher = better).
 
 ---
 
-## 📋 Task Descriptions
+## Quick Start
 
-| Task | Difficulty | Buses | Renewable Mix | Description |
-|---|---|---|---|---|
-| `task_easy` | Easy | 5 | 20% | Small grid, high droop sensitivity. Frequency control is the primary challenge. |
-| `task_medium` | Medium | 10 | 50% | Mid-size grid with renewable volatility. Balanced frequency + congestion management. |
-| `task_hard` | Hard | 14 | 70% | Large high-renewable grid. Volatile supply, many lines, coordinated control needed. |
-
-All tasks run for **50 timesteps** per episode. Graders score performance 0.0–1.0.
-
-### Reward Components
-| Component | Description |
-|---|---|
-| `survival` | +1.0 per step (or -100.0 on blackout) |
-| `frequency` | Bonus for tight control (<0.1 Hz deviation: +0.2), penalty for large deviations (capped at -1.5/step) |
-| `overload` | Quadratic penalty for lines with rho > 1.0, small penalty for rho > 0.8 |
-| `action_cost` | -0.5 per topology switch (discourages unnecessary switching) |
-
-**Frequency penalty cap:** Maximum -1.5 per step → worst case over 50 steps = -75. Blackout = -100. This ensures `survive_bad > blackout_good` mathematically.
-
----
-
-## 📊 Scoring Methodology
-
-### How Scores Are Computed
-
-Scores are normalized to **0.0–1.0** using the shared `normalize_score()` function. Both `/grader` and `/baseline` endpoints use identical normalization:
-
-$$s = \frac{R_{agent} - R_{floor}}{R_{ceiling} - R_{floor}} + 0.1 \times \text{N1\_survival\_rate}$$
-
-| Bound | Method | Description |
-|---|---|---|
-| **Floor** | Empirical (seeded) | Adversarial random-topology-thrashing policy. Uses `np.random.default_rng(seed=12345)` for reproducibility. Estimated over 10 episodes (`mean - std`). |
-| **Ceiling** | Analytical | `max_steps × 1.2` = perfect survival (+1.0) + perfect frequency bonus (+0.2) every step. This is the theoretical maximum reward. |
-
-### Why Analytical Ceiling?
-
-Previous versions used the heuristic policy as the ceiling, which caused **every agent matching the heuristic to score 1.0** — making it impossible to distinguish good agents from great ones. The analytical ceiling sets the upper bound at the theoretical maximum, so:
-
-- **1.0** = perfect agent (impossible to beat)
-- **0.85–0.90** = excellent (matches or exceeds heuristic baseline)
-- **0.50–0.85** = reasonable agent
-- **< 0.50** = poor performance
-
-> **Ceiling caveat:** The +0.2 frequency bonus requires `freq_dev < 0.1 Hz`, which needs `|P_slack| < 0.04 × S_total` (from droop model). On high-renewable tasks (`task_hard`), the slack bus routinely absorbs >50 MW of imbalance, making this band structurally inaccessible. The effective ceiling on such tasks is closer to `max_steps × 1.0 = 50.0`. Scores remain comparable across agents on the same task — the ceiling compresses the achievable range, not the ranking.
-
-### Baseline Scores
-
-Heuristic baseline (proportional frequency control, no topology switching):
-
-| Task | Score | Avg Raw Reward | N-1 Survival | Reward Floor | Reward Ceiling |
-|---|---|---|---|---|---|
-| `task_easy` | ~0.85 | ~28 | 100% | ~-103 | 60.0 |
-| `task_medium` | ~0.89 | ~50 | 100% | ~-109 | 60.0 |
-| `task_hard` | ~0.87 | ~50 | 100% | ~-105 | 60.0 |
-
-> **Note:** The heuristic no longer scores 1.0. An LLM agent that employs active topology management and predictive battery scheduling can score *higher* than the heuristic baseline. Reproduce scores with `python get_scores.py`.
-
-### Floor Estimation Details
-
-The reward floor is estimated using an **adversarial random thrashing policy** that randomly opens ~30% of connected lines each step, causing cascading failures:
-
-```python
-def _random_thrash_policy(obs, rng):
-    for line in obs.lines:
-        if line.connected and rng.random() > 0.7:
-            # Open the line → likely causes islanding/blackout
-```
-
-- **Seeded RNG** (`seed=12345`) — thrash policy is deterministic across runs
-- **10 samples** — reduces variance in `mean - std` estimate
-- **Environment-diverse** — each floor episode uses a different environment seed (`base_seed + i`) to capture both policy and wind/load stochasticity
-- **Conservative bound** — `floor = mean(samples) - std(samples)`
-
-### Reproducibility Guarantees
-
-| Component | Mechanism |
-|---|---|
-| Task grids | Seeded procedural generation (`np.random.default_rng`) |
-| Wind variability | Per-episode RNG (same seed → same wind pattern) |
-| Floor estimation | Seeded thrash policy RNG + 10 diverse-seeded episodes |
-| Ceiling | Analytical formula (no randomness) |
-| Scoring | Shared `normalize_score()` function across all endpoints |
-
----
-
-## 🏗️ Setup Instructions
-
-### Prerequisites
-- Python 3.10+
-- Docker (for containerized deployment)
-
-### Local Development
+### 1. Clone & Install
 
 ```bash
-# Clone the repository
-git clone https://github.com/K446/opengrid.git
-cd opengrid
+git clone https://github.com/krishnagoyal099/Opengrid_env.git
+cd Opengrid_env
 
-# Install dependencies
 pip install -r requirements.txt
+```
 
-# Run the server
+### 2. Start the Server
+
+```bash
 uvicorn app:app --host 0.0.0.0 --port 7860
-
-# Run tests
-python -m pytest tests/ -v
 ```
 
-### Docker
+Then open [http://localhost:7860](http://localhost:7860) — you'll see the interactive dashboard.
+
+### 3. Run the AI Agent
 
 ```bash
-# Build
-docker build -t opengrid .
-
-# Run
-docker run -p 7860:7860 opengrid
-
-# Verify
-curl http://localhost:7860/
-```
-
-### Inference (LLM Agent)
-
-```bash
-# Set required environment variables
+# Set your LLM API credentials
 export API_BASE_URL="https://api.openai.com/v1"
 export MODEL_NAME="gpt-4o"
 export HF_TOKEN="your-api-key"
 export ENV_URL="http://localhost:7860"
 
-# Start the environment server first, then:
+# Run inference on all 3 tasks
 python inference.py
 ```
 
----
+### Docker (Alternative)
 
-## 📁 Project Structure
-
-```
-opengrid/
-├── app.py                 # FastAPI application with all endpoints
-├── inference.py           # LLM inference script (structured logging)
-├── inference_output.txt   # Sample inference log (UTF-8, readable)
-├── openenv.yaml           # OpenEnv specification
-├── Dockerfile             # Container configuration
-├── requirements.txt       # Python dependencies
-├── get_scores.py          # Baseline score reproduction script
-├── src/
-│   ├── __init__.py
-│   ├── models.py          # Pydantic models (Action, Observation, Reward)
-│   ├── environment.py     # Core environment (reset/step/state)
-│   ├── physics.py         # DC power flow solver
-│   ├── tasks.py           # Procedural grid generation (3 difficulties)
-│   ├── grader.py          # Scoring: analytical ceiling + empirical floor
-│   ├── baseline.py        # Heuristic + LLM policies
-│   └── visualization.py   # Grid topology & frequency plots
-└── tests/
-    ├── __init__.py
-    └── test_solver.py     # Unit tests
+```bash
+docker build -t opengrid .
+docker run -p 7860:7860 opengrid
 ```
 
 ---
 
-## 🔧 API Endpoints
+## What the Agent Sees (Observations)
+
+Every step, the agent receives:
+
+| Field | Example | Meaning |
+|---|---|---|
+| `grid_frequency` | `49.87` | Current frequency in Hz (target: 50.0) |
+| `buses[].type` | `"solar"` | Bus type: slack, generator, load, battery, solar, wind |
+| `buses[].p_injection` | `35.2` | Power output in MW (negative = consuming) |
+| `buses[].soc` | `18.5` | Battery charge level (0–50 MWh, batteries only) |
+| `lines[].flow` | `62.4` | Power flowing through this line (MW) |
+| `lines[].rho` | `0.78` | Line loading ratio (>1.0 = overloaded!) |
+| `cooldowns` | `{"L_0_1": 2}` | Steps until a line can be switched again |
+| `is_blackout` | `false` | Game over if `true` |
+
+## What the Agent Can Do (Actions)
+
+| Action | Example | What It Does |
+|---|---|---|
+| **Adjust bus power** | `{"bus_id": 2, "delta": 10.0}` | Ramp up generator/battery by 10 MW |
+| **Adjust bus power** | `{"bus_id": 3, "delta": -5.0}` | Charge battery or reduce generator by 5 MW |
+| **Switch line** | `{"line_id": "L_0_1", "action": "open"}` | Disconnect a transmission line (3-step cooldown) |
+| **Switch line** | `{"line_id": "L_0_1", "action": "close"}` | Reconnect a transmission line |
+
+> ⚠️ **Warning:** Switching lines carelessly can split the grid into islands → instant blackout!
+
+---
+
+## Reward System
+
+| Component | Value | When |
+|---|---|---|
+| **Survival** | +1.0 / step | Grid stays connected |
+| **Blackout** | −100.0 | Grid islands (game over) |
+| **Frequency bonus** | +0.2 / step | Frequency within ±0.1 Hz of 50 Hz |
+| **Frequency penalty** | up to −1.5 / step | Frequency drifts beyond ±0.5 Hz |
+| **Overload penalty** | quadratic | Lines loaded beyond capacity |
+| **Action cost** | −0.5 / switch | Each topology change costs this |
+
+**Key design:** Even surviving with terrible frequency (50 steps × −1.5 = −75) is better than a blackout (−100). The agent should **always prioritize keeping the grid connected**.
+
+---
+
+## Scoring
+
+Scores are normalized to **(0.02 – 0.98)** using:
+
+```
+score = (agent_reward − worst_case) / (best_case − worst_case) + N1_bonus
+```
+
+| Bound | How It's Computed |
+|---|---|
+| **Worst case (floor)** | Random agent that chaotically switches lines — causes blackouts fast |
+| **Best case (ceiling)** | Theoretical perfect agent: survives every step + perfect frequency bonus |
+| **N-1 bonus** | Up to +10% for completing the episode without a blackout |
+
+### What Scores Mean
+
+| Score Range | Interpretation |
+|---|---|
+| **0.85 – 0.98** | Excellent — matches or beats the heuristic baseline |
+| **0.50 – 0.85** | Decent — agent learned basic grid control |
+| **0.02 – 0.50** | Poor — frequent blackouts or bad frequency control |
+
+### Baseline Scores (Heuristic Policy)
+
+| Task | Score | Strategy |
+|---|---|---|
+| `task_easy` | ~0.90 | Proportional frequency control, no line switching |
+| `task_medium` | ~0.98 | Same heuristic — medium grid happens to be well-balanced |
+| `task_hard` | ~0.98 | Same heuristic — hard grid has more buses but similar dynamics |
+
+> Reproduce with: `python get_scores.py`
+
+---
+
+## API Reference
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/` | GET | Interactive dashboard |
-| `/health` | GET | Health check (JSON) |
-| `/tasks` | GET | List available tasks |
-| `/reset?task_id=task_easy` | POST | Start new episode |
-| `/step?session_id=...` | POST | Execute action (body: GridAction JSON) |
-| `/state?session_id=...` | GET | Get current state |
-| `/grader?session_id=...` | GET | Get episode score (0.0–1.0) |
-| `/baseline?use_llm=false` | GET | Run baseline on all tasks |
+| `/` | GET | Interactive dashboard (web UI) |
+| `/health` | GET | Health check → `{"status": "OpenGrid Running"}` |
+| `/tasks` | GET | List all available tasks with schemas |
+| `/reset?task_id=task_easy` | POST | Start new episode → returns session ID + initial observation |
+| `/step?session_id=...` | POST | Send action (JSON body) → returns observation, reward, done |
+| `/state?session_id=...` | GET | Get current grid state |
+| `/grader?session_id=...` | GET | Get normalized score for this episode |
+| `/baseline?use_llm=false` | GET | Run baseline policy on all tasks |
 | `/visualize?session_id=...` | GET | Get grid visualization (base64 PNG) |
 
+### Example: Play One Step
+
+```bash
+# 1. Start an episode
+curl -X POST "http://localhost:7860/reset?task_id=task_easy"
+# Returns: {"session_id": "abc-123", "observation": {...}}
+
+# 2. Take an action
+curl -X POST "http://localhost:7860/step?session_id=abc-123" \
+  -H "Content-Type: application/json" \
+  -d '{"bus_adjustments": [{"bus_id": 2, "delta": 5.0}], "topology_actions": []}'
+# Returns: {"observation": {...}, "reward": {...}, "done": false, "info": {...}}
+
+# 3. Check your score
+curl "http://localhost:7860/grader?session_id=abc-123"
+# Returns: {"score": 0.87, ...}
+```
+
 ---
 
-## ⚡ Technical Details
+## Project Structure
 
-### Physics Engine
+```
+Opengrid_env/
+├── app.py                 # FastAPI server — all API endpoints
+├── inference.py           # LLM agent inference script
+├── openenv.yaml           # OpenEnv hackathon specification
+├── Dockerfile             # Container config for deployment
+├── requirements.txt       # Python dependencies
+├── get_scores.py          # Reproduce baseline scores locally
+│
+├── src/                   # Core environment logic
+│   ├── models.py          # Pydantic data models (Action, Observation, Reward)
+│   ├── environment.py     # Grid simulation engine (reset / step / state)
+│   ├── physics.py         # DC power flow solver (B-matrix, slack bus)
+│   ├── tasks.py           # Procedural grid generation (3 difficulties)
+│   ├── grader.py          # Scoring system (floor/ceiling normalization)
+│   ├── baseline.py        # Heuristic + LLM baseline policies
+│   └── visualization.py   # Grid topology & frequency plots
+│
+├── static/                # Dashboard frontend (HTML/CSS/JS)
+├── server/                # Alternative entry point for multi-mode deploy
+└── tests/                 # Unit tests
+```
+
+---
+
+## Technical Details
+
+<details>
+<summary><strong>🔬 Physics Engine</strong></summary>
+
 - **DC Power Flow** with B-matrix formulation (standard power systems approximation)
-- **Slack bus** properly absorbs generation/load imbalance after each solve
-- **Islanding detection** via NetworkX graph connectivity analysis
-- **Droop frequency model** calibrated to system size: `droop = 2.5 / (total_load + total_gen)` Hz/MW
+- **Slack bus** absorbs generation/load imbalance after each power flow solve
+- **Islanding detection** via NetworkX graph connectivity checks
+- **Droop frequency model** calibrated to system size: `f = 50.0 − (2.5 / total_capacity) × P_slack`
 
-### Reproducibility
-- All tasks use seeded procedural generation (`np.random.default_rng`)
-- Per-episode RNG for stochastic elements (wind variability)
-- Same seed → identical initial conditions and dynamics
-- Floor estimation uses seeded RNG — deterministic across process lifetimes
+</details>
 
-### Thread Safety
-- **Session Access**: A strict `threading.Lock` guards all session reads and writes across `/step`, `/grader`, and `/state` preventing race conditions under concurrent access.
-- **Grader Cache**: Double-checked locking prevents redundant environments rollouts during concurrent bounds estimation.
-- Fully safe for concurrent evaluations in both single-worker and multi-worker deployments.
+<details>
+<summary><strong>🔒 Thread Safety</strong></summary>
 
-### Task Generation Guarantees
-- Every grid has at least 30% load buses (prevents degenerate all-generation grids)
-- Every grid has at least 1 battery (ensures controllability)
-- `rng.choice` results wrapped in `str()` to prevent `numpy.str_` type mismatches
+- All session reads/writes are protected by a `threading.Lock`
+- Grader bounds use double-checked locking to avoid duplicate rollouts
+- Safe for concurrent requests from multiple agents
+
+</details>
+
+<details>
+<summary><strong>🎲 Reproducibility</strong></summary>
+
+| Component | Mechanism |
+|---|---|
+| Task grids | Seeded procedural generation (`np.random.default_rng`) |
+| Wind variability | Per-episode RNG (same seed → same wind pattern) |
+| Floor estimation | Seeded thrash policy + 10 diverse-seeded episodes |
+| Ceiling | Analytical formula (deterministic) |
+| Scoring | Shared `normalize_score()` across all endpoints |
+
+</details>
 
 ---
 
-## 📜 License
+## Links
 
-MIT
+| Resource | URL |
+|---|---|
+| **Live Demo** | [huggingface.co/spaces/K446/Opengrid](https://huggingface.co/spaces/K446/Opengrid) |
+| **GitHub Repo** | [github.com/krishnagoyal099/Opengrid_env](https://github.com/krishnagoyal099/Opengrid_env) |
+| **API Docs (Swagger)** | [huggingface.co/spaces/K446/Opengrid/docs](https://k446-opengrid.hf.space/docs) |
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE) for details.

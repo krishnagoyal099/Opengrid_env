@@ -9,7 +9,7 @@ import uvicorn
 # Add parent directory to path so we can import from the root package
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app import app  # noqa: E402, F401
+from app import app  # type: ignore[import-not-found]  # noqa: E402, F401
 
 
 def main():
