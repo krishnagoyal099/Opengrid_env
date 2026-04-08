@@ -1,28 +1,9 @@
+spec_version: 1
 name: opengrid
-description: >
-  A real-world simulation of renewable energy grid load balancing with topology control.
-  Agents must manage generator dispatch, battery storage, and transmission switching
-  to maintain frequency stability and prevent blackouts under high renewable penetration.
-version: 1.0.0
-author: KRISHNA GOYAL
-tags:
-  - openenv
-  - energy
-  - optimization
-  - control-systems
-  - reinforcement-learning
-endpoints:
-  reset: /reset
-  step: /step
-  state: /state
-  tasks: /tasks
-  baseline: /baseline
-  grader: /grader
-  visualize: /visualize
-models:
-  observation: src.models.GridObservation
-  action: src.models.GridAction
-  reward: src.models.GridReward
+type: space
+runtime: fastapi
+app: app:app
+port: 7860
 tasks:
   - id: task_easy
     name: Easy Grid (5 buses, 20% renewables)
