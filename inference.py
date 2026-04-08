@@ -59,22 +59,19 @@ Respond with ONLY a valid JSON object. Example:
 """
 
 
-# ---------- Structured Logging ----------
+# ---------- Structured Logging (mandatory key=value format) ----------
 
 def log_start(task: str, env: str, model: str):
-    print(f'[START] {json.dumps({"task": task, "env": env, "model": model})}', flush=True)
+    print(f"[START] task={task} env={env} model={model}", flush=True)
 
 
 def log_step(step: int, action: str, reward: float, done: bool, error=None):
-    entry = {
-        "step": step,
-        "action": action,
-        "reward": round(reward, 4),
-        "done": done,
-    }
-    if error:
-        entry["error"] = str(error)
-    print(f'[STEP] {json.dumps(entry)}', flush=True)
+    done_val = str(done).lower()
+    error_val = str(error) if error else "null"
+    print(
+        f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}",
+        flush=True,
+    )
 
 
 def clamp_score(s: float) -> float:
@@ -91,13 +88,13 @@ def clamp_score(s: float) -> float:
 
 
 def log_end(success: bool, steps: int, score: float, rewards: list):
-    entry = {
-        "success": success,
-        "steps": steps,
-        "score": clamp_score(score),
-        "rewards": [round(r, 4) for r in rewards],
-    }
-    print(f'[END] {json.dumps(entry)}', flush=True)
+    clamped = clamp_score(score)
+    success_val = str(success).lower()
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    print(
+        f"[END] success={success_val} steps={steps} score={clamped:.2f} rewards={rewards_str}",
+        flush=True,
+    )
 
 
 # ---------- LLM Call ----------
