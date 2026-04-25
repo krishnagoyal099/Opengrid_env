@@ -81,6 +81,7 @@ def run_grpo_training():
         task_type="CAUSAL_LM",
     )
     model = get_peft_model(model, lora_config)
+    model.enable_input_require_grads()  # Required for gradient checkpointing + 4-bit
     print(f"  Model: {MODEL_NAME}")
     print(f"  Trainable params: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
 
