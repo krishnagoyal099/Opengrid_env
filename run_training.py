@@ -61,7 +61,7 @@ def run_grpo_training():
     # ── 1. Load model ──
     print("\n[1/6] Loading model with bitsandbytes 4-bit...")
     from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
-    from peft import LoraConfig, get_peft_model
+    from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
     MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
     bnb_config = BitsAndBytesConfig(
@@ -71,9 +71,23 @@ def run_grpo_training():
         bnb_4bit_use_double_quant=True,
     )
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_NAME, quantization_config=bnb_config, device_map="auto",
     )
+
+    # Critical for bnb-4bit + LoRA + gradient checkpointing: cast norms to fp32,
+    # enable input grads, and wire up non-reentrant checkpointing.
+    model = prepare_model_for_kbit_training(
+        model,
+        use_gradient_checkpointing=True,
+        gradient_checkpointing_kwargs={"use_reentrant": False},
+    )
+    model.config.pad_token_id = tokenizer.pad_token_id
+    model.config.use_cache = False  # silences the warning loop during training
+
     lora_config = LoraConfig(
         r=16, lora_alpha=16, lora_dropout=0,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
@@ -81,12 +95,9 @@ def run_grpo_training():
         task_type="CAUSAL_LM",
     )
     model = get_peft_model(model, lora_config)
-    model.enable_input_require_grads()  # Required for gradient checkpointing + 4-bit
+    model.enable_input_require_grads()
     print(f"  Model: {MODEL_NAME}")
     print(f"  Trainable params: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
-
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
 
     # ── 2. Baseline evaluation ──
     print("\n[2/6] Running baseline evaluation...")
@@ -205,24 +216,29 @@ def run_grpo_training():
             else:
                 obs_dicts.append(ctx)
 
-        return compute_grpo_reward_env(texts, obs_dicts, task_config, horizon=3)
+        return compute_grpo_reward_env(texts, obs_dicts, task_config, horizon=1)
 
     grpo_config = GRPOConfig(
         output_dir="training/outputs/grpo_checkpoints",
         num_train_epochs=3,
         per_device_train_batch_size=2,
-        gradient_accumulation_steps=8,
+        gradient_accumulation_steps=2,   # was 8 — first visible step lands ~4x sooner
         learning_rate=1e-5,
-        logging_steps=5,
+        logging_steps=1,                  # was 5 — see loss every step
         save_steps=50,
-        max_completion_length=128,
+        max_prompt_length=1024,           # default 512 truncates Karnataka prompts
+        max_completion_length=96,         # was 128 — ~25% faster generation
         num_generations=2,
+        temperature=0.7,                  # was 0.9 default — less wasted sampling
         report_to="none",
         remove_unused_columns=False,
         bf16=_bf16,
         fp16=_fp16,
         gradient_checkpointing=True,
-        optim="adafactor",
+        gradient_checkpointing_kwargs={"use_reentrant": False},
+        optim="paged_adamw_8bit",         # canonical for QLoRA; adafactor fights bf16+bnb
+        warmup_ratio=0.05,
+        lr_scheduler_type="cosine",
     )
 
     train_dataset = Dataset.from_dict({"prompt": prompts, "obs_context": obs_contexts})
