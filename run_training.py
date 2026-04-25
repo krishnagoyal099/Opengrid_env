@@ -12,6 +12,24 @@ import shutil
 import traceback
 from pathlib import Path
 
+# --- TRITON COMPILER FIX ---
+import subprocess
+try:
+    print("Checking for gcc...")
+    result = subprocess.run(['which', 'gcc'], capture_output=True, text=True)
+    gcc_path = result.stdout.strip()
+    print(f"gcc location: {gcc_path or 'NOT FOUND'}")
+    if gcc_path:
+        os.environ['CC'] = gcc_path
+        os.environ['CXX'] = shutil.which('g++') or ''
+        result2 = subprocess.run(['gcc', '--version'], capture_output=True, text=True)
+        print(f"gcc version:\n{result2.stdout.strip()[:100]}")
+    else:
+        print("WARNING: gcc still not found in PATH!")
+except Exception as e:
+    print(f"Error checking gcc: {e}")
+# ----------------------------
+
 # ── Training ──────────────────────────────────────────────────────
 def run_grpo_training():
     """Run GRPO training with env-grounded rewards."""
