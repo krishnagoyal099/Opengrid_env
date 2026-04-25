@@ -208,8 +208,8 @@ def run_grpo_training():
     grpo_config = GRPOConfig(
         output_dir="training/outputs/grpo_checkpoints",
         num_train_epochs=3,
-        per_device_train_batch_size=2,
-        gradient_accumulation_steps=8,
+        per_device_train_batch_size=8,
+        gradient_accumulation_steps=2,
         learning_rate=1e-5,
         logging_steps=5,
         save_steps=50,
