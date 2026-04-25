@@ -1,4 +1,4 @@
-# Training deps (torch, unsloth installed separately in Dockerfile)
+# Training deps — standard stack, no unsloth
 transformers>=4.46.0,<4.52
 trl>=0.12.0,<0.16
 peft>=0.13.0

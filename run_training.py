@@ -58,26 +58,30 @@ def run_grpo_training():
     )
 
     # ── 1. Load model ──
-    print("\n[1/6] Loading model with Unsloth...")
-    try:
-        from unsloth import FastLanguageModel
-        MODEL_NAME = "unsloth/Qwen2.5-1.5B-Instruct-bnb-4bit"
-        model, tokenizer = FastLanguageModel.from_pretrained(
-            model_name=MODEL_NAME, max_seq_length=2048, load_in_4bit=True,
-        )
-        model = FastLanguageModel.get_peft_model(
-            model, r=16, lora_alpha=16, lora_dropout=0,
-            target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
-                            "gate_proj", "up_proj", "down_proj"],
-        )
-        print(f"  Model: {MODEL_NAME}")
-        print(f"  Trainable params: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
-    except ImportError:
-        print("WARNING: Unsloth not available, using standard loading")
-        from transformers import AutoTokenizer, AutoModelForCausalLM
-        MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
-        tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-        model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
+    print("\n[1/6] Loading model with bitsandbytes 4-bit...")
+    from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+    from peft import LoraConfig, get_peft_model
+
+    MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+        bnb_4bit_use_double_quant=True,
+    )
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+    model = AutoModelForCausalLM.from_pretrained(
+        MODEL_NAME, quantization_config=bnb_config, device_map="auto",
+    )
+    lora_config = LoraConfig(
+        r=16, lora_alpha=16, lora_dropout=0,
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
+                        "gate_proj", "up_proj", "down_proj"],
+        task_type="CAUSAL_LM",
+    )
+    model = get_peft_model(model, lora_config)
+    print(f"  Model: {MODEL_NAME}")
+    print(f"  Trainable params: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
 
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -239,10 +243,7 @@ def run_grpo_training():
 
     # ── 5. Post-training evaluation ──
     print("\n[5/6] Evaluating trained model...")
-    try:
-        FastLanguageModel.for_inference(model)
-    except Exception:
-        pass
+    model.eval()
 
     def trained_generate(prompt):
         messages = [
