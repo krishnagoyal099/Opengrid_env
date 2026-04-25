@@ -787,6 +787,94 @@ def run_test_mode():
 
 
 # ============================================================================
+# Curriculum Training
+# ============================================================================
+
+CURRICULUM_ORDER = ["karnataka_easy", "karnataka_medium", "karnataka_hard", "task_karnataka"]
+
+
+def run_curriculum(args):
+    """Run curriculum training: easy→medium→hard→full on Karnataka grid.
+
+    Each phase trains for `args.epochs` epochs, saves a checkpoint,
+    and the next phase resumes from that checkpoint.
+    """
+    print("\n" + "=" * 60)
+    print("  OpenGrid Curriculum Training")
+    print(f"  Phases: {' → '.join(CURRICULUM_ORDER)}")
+    print(f"  Epochs per phase: {args.epochs}")
+    print("=" * 60)
+
+    checkpoint_path = args.resume_from
+    all_results = {}
+
+    for phase_idx, task_id in enumerate(CURRICULUM_ORDER):
+        phase_num = phase_idx + 1
+        print(f"\n{'─' * 60}")
+        print(f"  Phase {phase_num}/{len(CURRICULUM_ORDER)}: {task_id}")
+        if checkpoint_path:
+            print(f"  Resuming from: {checkpoint_path}")
+        print(f"{'─' * 60}")
+
+        # Override args for this phase
+        phase_args = copy.copy(args)
+        phase_args.task = task_id
+        phase_args.output_dir = str(Path(args.output_dir) / f"phase_{phase_num}_{task_id}")
+        if checkpoint_path:
+            phase_args.model = checkpoint_path
+
+        Path(phase_args.output_dir).mkdir(parents=True, exist_ok=True)
+
+        # Train this phase
+        train_result = train_grpo(phase_args)
+
+        # Set checkpoint for next phase
+        checkpoint_path = str(Path(phase_args.output_dir) / "trained_model")
+
+        # Evaluate on all Karnataka tasks
+        print(f"\n  [EVAL] Phase {phase_num} evaluation...")
+        eval_tasks = CURRICULUM_ORDER
+        from src.baseline import heuristic_policy
+
+        def heuristic_generate(prompt):
+            freq_match = re.search(r'Frequency:\s*([-+]?\d+(?:\.\d+)?)', prompt)
+            freq = float(freq_match.group(1)) if freq_match else 50.0
+            error = 50.0 - freq
+            delta = max(-20, min(20, error * 10))
+            bus_matches = re.findall(r'Bus (\d+) \((generator|battery)\)', prompt)
+            if bus_matches:
+                per_bus = delta / len(bus_matches)
+                return json.dumps({"bus_adjustments": [{"bus_id": int(m[0]), "delta": round(per_bus, 1)} for m in bus_matches], "topology_actions": []})
+            return json.dumps({"bus_adjustments": [], "topology_actions": []})
+
+        phase_results = evaluate_model(heuristic_generate, task_ids=eval_tasks, n_episodes=2)
+        all_results[f"phase_{phase_num}"] = phase_results
+        for tid, res in phase_results.items():
+            print(f"    {tid}: {res['avg_reward']:.2f} ± {res['std_reward']:.2f}")
+
+    # Summary
+    print("\n" + "=" * 60)
+    print("  CURRICULUM TRAINING COMPLETE")
+    print("=" * 60)
+    print(f"  Final model: {checkpoint_path}")
+    print(f"  Phases completed: {len(CURRICULUM_ORDER)}")
+
+    # Save curriculum summary
+    summary = {
+        "phases": CURRICULUM_ORDER,
+        "epochs_per_phase": args.epochs,
+        "results": {k: {t: {"avg": round(r["avg_reward"], 2)} for t, r in v.items()} for k, v in all_results.items()},
+        "final_model": checkpoint_path,
+    }
+    summary_path = Path(args.output_dir) / "curriculum_summary.json"
+    with open(summary_path, "w") as f:
+        json.dump(summary, f, indent=2)
+    print(f"  Summary: {summary_path}")
+
+    return summary
+
+
+# ============================================================================
 # Main
 # ============================================================================
 
@@ -795,7 +883,7 @@ def main():
     parser.add_argument("--model", default="Qwen/Qwen2.5-1.5B-Instruct",
                         help="HuggingFace model name or path")
     parser.add_argument("--task", default="task_easy", choices=list(TASKS.keys()),
-                        help="Which task to train on")
+                        help="Which task to train on (ignored if --curriculum)")
     parser.add_argument("--epochs", type=int, default=3, help="Number of training epochs")
     parser.add_argument("--batch-size", type=int, default=2, help="Batch size per device")
     parser.add_argument("--num-prompts", type=int, default=50,
@@ -806,6 +894,10 @@ def main():
                         help="Use Unsloth for 4-bit quantized training")
     parser.add_argument("--test-mode", action="store_true",
                         help="Run pipeline verification without GPU")
+    parser.add_argument("--curriculum", action="store_true",
+                        help="Run curriculum training: karnataka_easy → medium → hard → full")
+    parser.add_argument("--resume-from", default=None,
+                        help="Resume training from a checkpoint path")
 
     args = parser.parse_args()
 
@@ -816,11 +908,12 @@ def main():
     # Create output directory
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
-    # Run training
-    train_result = train_grpo(args)
-
-    print("\n[DONE] Training complete!")
-    print(f"  Output: {args.output_dir}")
+    if args.curriculum:
+        run_curriculum(args)
+    else:
+        train_result = train_grpo(args)
+        print("\n[DONE] Training complete!")
+        print(f"  Output: {args.output_dir}")
 
 
 if __name__ == "__main__":

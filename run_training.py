@@ -79,7 +79,7 @@ def run_grpo_training():
         return json.dumps({"bus_adjustments": [], "topology_actions": []})
 
     baseline_results = {}
-    for task_id in ["task_easy", "task_medium", "task_karnataka"]:
+    for task_id in ["task_easy", "task_medium", "karnataka_easy", "karnataka_medium", "karnataka_hard", "task_karnataka"]:
         if task_id not in TASKS:
             continue
         config = TASKS[task_id]
@@ -238,7 +238,7 @@ def run_grpo_training():
         return tokenizer.decode(outputs[0][inputs['input_ids'].shape[1]:], skip_special_tokens=True)
 
     trained_results = {}
-    for task_id in ["task_easy", "task_medium", "task_karnataka"]:
+    for task_id in ["task_easy", "task_medium", "karnataka_easy", "karnataka_medium", "karnataka_hard", "task_karnataka"]:
         if task_id not in TASKS:
             continue
         config = TASKS[task_id]

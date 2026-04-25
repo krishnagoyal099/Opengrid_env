@@ -66,6 +66,46 @@
         </div>
     </header>
 
+    <!-- ===== TOOLBAR ===== -->
+    <div class="toolbar">
+        <div class="toolbar-section">
+            <span class="toolbar-label">PROCEDURAL</span>
+            <div class="task-group" id="proceduralTasks">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+        <div class="toolbar-divider"></div>
+        <div class="toolbar-section">
+            <span class="toolbar-label">KARNATAKA</span>
+            <div class="task-group" id="karnatakaTasks">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+        <div class="toolbar-divider"></div>
+        <div class="toolbar-section">
+            <span class="toolbar-label">CONTROLS</span>
+            <div class="controls-row">
+                <button class="ctrl-btn accent" id="btnReset" onclick="resetEpisode()">⟳ Reset</button>
+                <button class="ctrl-btn" id="btnStep" onclick="stepEpisode()">▶ Step</button>
+                <button class="ctrl-btn" id="btnAutoRun" onclick="toggleAutoRun()">⏩ Auto</button>
+                <button class="ctrl-btn" onclick="getGrade()">★ Grade</button>
+            </div>
+        </div>
+        <div class="toolbar-divider"></div>
+        <div class="toolbar-section">
+            <span class="toolbar-label">SCORE</span>
+            <div class="toolbar-score" id="episodeScore">--</div>
+        </div>
+        <div class="toolbar-section" style="margin-left:auto;">
+            <span class="toolbar-label">STEPS</span>
+            <span class="toolbar-value" id="totalSteps">0</span>
+        </div>
+        <div class="toolbar-section">
+            <span class="toolbar-label">BLACKOUT</span>
+            <span class="toolbar-value" id="blackoutStatus" style="color: var(--status-normal);">No</span>
+        </div>
+    </div>
+
     <!-- ===== LEFT PANEL ===== -->
     <aside class="left-panel">
 
@@ -128,25 +168,7 @@
         <!-- Exception Log -->
         <div class="card" style="flex:1; display:flex; flex-direction:column; overflow:hidden;">
             <div class="card-title" style="color: var(--status-warning);">Exception Log</div>
-            <div class="alarm-log" id="alarmLog">
-                <!-- Populated by JS -->
-            </div>
-        </div>
-
-        <!-- Task Selector -->
-        <div class="card" style="flex-shrink:0;">
-            <div class="card-title">Task &amp; Controls</div>
-            <div class="task-selector" id="taskSelector">
-                <button class="task-btn" data-task="task_easy">Easy</button>
-                <button class="task-btn" data-task="task_medium">Medium</button>
-                <button class="task-btn" data-task="task_hard">Hard</button>
-                <button class="task-btn active" data-task="task_karnataka" style="color: #ffeb3b; border-color: rgba(255,235,59,0.3);">Karnataka</button>
-            </div>
-            <div class="controls-row" style="margin-top: var(--gap-sm);">
-                <button class="ctrl-btn active" id="btnReset" onclick="resetEpisode()">Reset</button>
-                <button class="ctrl-btn" id="btnStep" onclick="stepEpisode()">Step</button>
-                <button class="ctrl-btn" id="btnAutoRun" onclick="toggleAutoRun()">Auto</button>
-            </div>
+            <div class="alarm-log" id="alarmLog"></div>
         </div>
 
     </aside>
@@ -154,6 +176,19 @@
     <!-- ===== CENTER PANEL (Grid Map) ===== -->
     <main class="center-panel" id="centerPanel">
         <div class="grid-map" id="gridMap"></div>
+        <!-- Map legend -->
+        <div class="map-legend">
+            <div class="legend-title">Legend</div>
+            <div class="legend-item"><span class="legend-dot" style="background:#00e5a0;"></span> Slack</div>
+            <div class="legend-item"><span class="legend-dot" style="background:#f5a623;"></span> Generator</div>
+            <div class="legend-item"><span class="legend-dot" style="background:#e94560;"></span> Load</div>
+            <div class="legend-item"><span class="legend-dot" style="background:#4a90d9;"></span> Battery</div>
+            <div class="legend-item"><span class="legend-dot" style="background:#ffeb3b;"></span> Solar</div>
+            <div class="legend-item"><span class="legend-dot" style="background:#64ffda;"></span> Wind</div>
+            <div class="legend-line"><span class="legend-line-sample normal"></span> Normal</div>
+            <div class="legend-line"><span class="legend-line-sample warn"></span> Congested</div>
+            <div class="legend-line"><span class="legend-line-sample crit"></span> Overloaded</div>
+        </div>
         <div class="bus-tooltip" id="busTooltip">
             <div class="tt-title" id="ttTitle">Bus 0</div>
             <div class="tt-row"><span>Type</span><span class="tt-val" id="ttType">--</span></div>
@@ -162,60 +197,29 @@
         </div>
     </main>
 
-    <!-- ===== RIGHT PANEL (Agent Monitor) ===== -->
+    <!-- ===== RIGHT PANEL ===== -->
     <aside class="right-panel">
         <div class="card">
             <div class="card-title">Agent Leaderboard</div>
-            <ul class="leaderboard" id="leaderboard">
-                <!-- Populated by JS -->
-            </ul>
+            <ul class="leaderboard" id="leaderboard"></ul>
         </div>
-
-        <div id="agentCards">
-            <!-- Populated by JS -->
-        </div>
+        <div id="agentCards"></div>
     </aside>
 
     <!-- ===== BOTTOM PANEL ===== -->
     <footer class="bottom-panel">
-
-        <!-- Reward History Chart -->
         <div class="bottom-card">
             <div class="card-title">Reward History</div>
             <div class="chart-area" id="rewardChart"></div>
         </div>
-
-        <!-- Frequency Trend -->
         <div class="bottom-card">
             <div class="card-title">Frequency Trend</div>
             <div class="chart-area" id="freqChart"></div>
         </div>
-
-        <!-- Generation Mix -->
         <div class="bottom-card">
             <div class="card-title">Generation Mix</div>
             <div class="chart-area" id="genMixChart"></div>
         </div>
-
-        <!-- Episode Score -->
-        <div class="bottom-card">
-            <div class="card-title">Episode Score</div>
-            <div class="coord-score" style="flex:1; display:flex; flex-direction:column; justify-content:center;">
-                <div class="big-value" id="episodeScore" style="color: var(--chart-reward); font-size: 36px;">--</div>
-                <div style="font-size:10px; color: var(--text-secondary); margin-top:4px;">Grader Score</div>
-                <div style="font-size:11px; margin-top:8px;">
-                    <span style="color: var(--text-secondary);">Steps:</span>
-                    <span id="totalSteps" style="font-family: 'JetBrains Mono'; font-weight:600;">0</span>
-                    <span style="color: var(--text-secondary); margin-left:8px;">Blackout:</span>
-                    <span id="blackoutStatus" style="font-family: 'JetBrains Mono'; font-weight:600; color: var(--status-normal);">No</span>
-                </div>
-            </div>
-            <div class="controls-row">
-                <button class="ctrl-btn" onclick="getGrade()">Grade</button>
-                <button class="ctrl-btn danger" onclick="resetEpisode()">New Episode</button>
-            </div>
-        </div>
-
     </footer>
 
 </div>

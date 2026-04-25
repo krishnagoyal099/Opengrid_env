@@ -15,17 +15,52 @@ let state = {
 };
 
 // --- Init ---
-document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('.task-btn').forEach(btn => {
+function isKarnatakaTask(taskId) {
+    return taskId.includes('karnataka');
+}
+
+function buildTaskButtons(tasks) {
+    const procContainer = document.getElementById('proceduralTasks');
+    const kaContainer = document.getElementById('karnatakaTasks');
+    procContainer.innerHTML = '';
+    kaContainer.innerHTML = '';
+
+    // Display-friendly names
+    const nameMap = {
+        'task_easy': 'Easy', 'task_medium': 'Medium', 'task_hard': 'Hard',
+        'task_karnataka': 'Full ★',
+        'karnataka_easy': 'Easy', 'karnataka_medium': 'Medium', 'karnataka_hard': 'Hard',
+    };
+
+    tasks.forEach(t => {
+        const btn = document.createElement('button');
+        btn.className = 'task-btn' + (t.id === state.task ? ' active' : '');
+        if (isKarnatakaTask(t.id)) btn.classList.add('ka');
+        btn.dataset.task = t.id;
+        const label = nameMap[t.id] || t.id.replace('task_','').replace('karnataka_','');
+        btn.innerHTML = `<span class="task-name">${label}</span><span class="task-info">${t.num_buses}b · ${t.num_agents}a</span>`;
         btn.addEventListener('click', () => {
             document.querySelectorAll('.task-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-            state.task = btn.dataset.task;
+            state.task = t.id;
+            // Destroy map so it reinitializes with correct bounds
+            if (leafletMap) { leafletMap.remove(); leafletMap = null; mapLayers = {lines:null,nodes:null,badges:null}; }
+            mapFitted = false;
+            resetEpisode();
         });
+        if (t.id.startsWith('task_') && !t.id.includes('karnataka')) {
+            procContainer.appendChild(btn);
+        } else {
+            kaContainer.appendChild(btn);
+        }
     });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
     fetch(`${API}/tasks`).then(r=>r.json()).then(d=>{
         d.forEach(t => state.taskConfigs[t.id] = t);
-        resetEpisode(); // reset only after configs are loaded
+        buildTaskButtons(d);
+        resetEpisode();
         setTimeout(() => document.getElementById('loading').classList.add('hidden'), 800);
     });
 });
@@ -358,29 +393,41 @@ function initLeafletMap() {
     const container = document.getElementById('gridMap');
     if (leafletMap) return;
     
-    // Karnataka bounds
-    const kaBounds = [[11.5, 73.5], [18.5, 79.0]];
+    const isKa = isKarnatakaTask(state.task);
+    // Karnataka bounds: tight crop around the state
+    const kaBounds = [[11.5, 73.8], [18.5, 79.0]];
     
-    leafletMap = L.map(container, {
-        center: [14.5, 76.5],
-        zoom: 7,
+    const mapOpts = {
+        center: isKa ? [14.5, 76.5] : [15, 76],
+        zoom: isKa ? 7 : 6,
         zoomControl: true,
         attributionControl: false,
-        minZoom: 5,
+        minZoom: isKa ? 6 : 3,
         maxZoom: 15,
         preferCanvas: true,
-    });
-    
-    // Dark tile layer for SCADA aesthetic
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        subdomains: 'abcd',
-        maxZoom: 19,
-    }).addTo(leafletMap);
+    };
+    // Lock panning for Karnataka tasks
+    if (isKa) {
+        mapOpts.maxBounds = L.latLngBounds(kaBounds).pad(0.15);
+        mapOpts.maxBoundsViscosity = 1.0;
+    }
 
-    // Attribution (small, bottom-right)
-    L.control.attribution({position: 'bottomright', prefix: false})
-        .addAttribution('© <a href="https://carto.com/">CARTO</a>')
-        .addTo(leafletMap);
+    leafletMap = L.map(container, mapOpts);
+    
+    if (isKa) {
+        // Real map tiles for Karnataka tasks
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            subdomains: 'abcd',
+            maxZoom: 19,
+        }).addTo(leafletMap);
+
+        L.control.attribution({position: 'bottomright', prefix: false})
+            .addAttribution('© <a href="https://carto.com/">CARTO</a>')
+            .addTo(leafletMap);
+
+        leafletMap.fitBounds(kaBounds, { padding: [20, 20] });
+    }
+    // Procedural grids: no tiles — plain dark background via CSS
 
     // Layer groups for easy clearing
     mapLayers.lines = L.layerGroup().addTo(leafletMap);
@@ -390,7 +437,7 @@ function initLeafletMap() {
     // Fix Leaflet size after container is fully rendered
     setTimeout(() => {
         leafletMap.invalidateSize();
-        leafletMap.fitBounds(kaBounds, { padding: [20, 20] });
+        if (isKa) leafletMap.fitBounds(kaBounds, { padding: [20, 20] });
     }, 200);
 }
 
@@ -464,17 +511,40 @@ function updateGridMap() {
             if (!from || !to) return;
 
             const lc = !l.connected ? '#4a5568' : l.rho > 1 ? '#ff1744' : l.rho > 0.8 ? '#ff9100' : '#e91e63';
-            const w = !l.connected ? 1.5 : l.rho > 0.8 ? 5 : 3;
+            const w = !l.connected ? 2 : l.rho > 1 ? 6 : l.rho > 0.8 ? 5 : 3.5;
+
+            // Glow layer for overloaded/congested lines
+            if (l.connected && l.rho > 0.8) {
+                const glow = L.polyline(
+                    [[from.lat, from.lon], [to.lat, to.lon]],
+                    { color: lc, weight: w + 6, opacity: 0.15, dashArray: null, interactive: false }
+                );
+                mapLayers.lines.addLayer(glow);
+            }
 
             const polyline = L.polyline(
                 [[from.lat, from.lon], [to.lat, to.lon]],
-                { color: lc, weight: w, dashArray: l.connected ? '10 5' : '4 4', opacity: 0.9 }
+                { color: lc, weight: w, dashArray: l.connected ? '12 6' : '4 6', opacity: 0.95 }
             );
-            if (l.connected && Math.abs(l.flow) > 0.5) {
-                polyline.bindTooltip(`${l.id}: ${l.flow.toFixed(0)} MW (${(l.rho*100).toFixed(0)}%)`, {
-                    permanent: false, className: 'leaflet-tooltip-dark'
+            // Show tooltip with flow info
+            const flowStr = l.connected ? `${l.flow.toFixed(0)} MW · ${(l.rho*100).toFixed(0)}% load` : 'Disconnected';
+            polyline.bindTooltip(`<b>${l.id}</b><br>${flowStr}`, {
+                permanent: false, className: 'leaflet-tooltip-dark', direction: 'center'
+            });
+
+            // Permanent label for high-flow lines
+            if (l.connected && Math.abs(l.flow) > 10) {
+                const midLat = (from.lat + to.lat) / 2;
+                const midLon = (from.lon + to.lon) / 2;
+                const flowLabel = L.divIcon({
+                    className: 'line-flow-label',
+                    html: `<span style="color:${lc};text-shadow:0 0 4px #000,0 0 8px #000;font-size:9px;font-family:'JetBrains Mono',monospace;font-weight:600;white-space:nowrap;">${Math.abs(l.flow).toFixed(0)}MW</span>`,
+                    iconSize: [40, 12],
+                    iconAnchor: [20, 6],
                 });
+                L.marker([midLat, midLon], { icon: flowLabel, interactive: false }).addTo(mapLayers.lines);
             }
+
             mapLayers.lines.addLayer(polyline);
         });
     }
