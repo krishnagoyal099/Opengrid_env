@@ -31,15 +31,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 2. PyTorch 2.6.0 + CUDA 12.1
 RUN pip install --no-cache-dir torch==2.6.0 --extra-index-url https://download.pytorch.org/whl/cu121
 
-# 3. torchao 0.8.0 (compatible with torch 2.6, satisfies transformers import)
-RUN pip install --no-cache-dir torchao==0.8.0
-
-# 4. Training deps (no unsloth here)
+# 3. Training deps (no unsloth here)
 COPY --chown=user requirements-training.txt .
 RUN pip install --no-cache-dir -r requirements-training.txt
 
-# 5. Unsloth --no-deps (avoids torchao>=0.13 conflict)
+# 4. Unsloth --no-deps (avoids torchao>=0.13 conflict)
 RUN pip install --no-cache-dir --no-deps unsloth==2025.11.1 unsloth_zoo
+
+# 5. Remove torchao if pulled in (incompatible with torch 2.6, crashes transformers)
+RUN pip uninstall -y torchao 2>/dev/null; true
 
 # --- App code ---
 COPY --chown=user src/ /app/src/
