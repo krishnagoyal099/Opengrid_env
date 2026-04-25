@@ -1,18 +1,10 @@
-# Training dependencies (torch 2.6.0 installed separately in Dockerfile)
-# -------------------------------------------------------------------
-# Pin versions that are mutually compatible with:
-#   torch==2.6.0, unsloth==2025.11.1, CUDA 12.1
-# -------------------------------------------------------------------
-
+# Training deps (torch, torchao, unsloth installed separately in Dockerfile)
 transformers>=4.51.3,<5.0
 trl>=0.12.0,<1.0
 peft>=0.13.0
 accelerate>=1.0.0
 datasets>=3.0.0
 bitsandbytes
-unsloth==2025.11.1
-unsloth_zoo
-torchao>=0.5.0,<0.9
 
 # Shared with environment
 fastapi

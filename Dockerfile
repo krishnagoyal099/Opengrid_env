@@ -1,5 +1,4 @@
 # Hugging Face Docker Space — OpenGrid
-# Serves both the UI dashboard AND GRPO training.
 # Set env OPENGRID_MODE=training for training mode.
 
 FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
@@ -8,7 +7,6 @@ LABEL org.opencontainers.image.title="OpenGrid"
 LABEL org.opencontainers.image.description="Renewable energy grid load-balancing environment"
 LABEL openenv="true"
 
-# Install Python 3.10 and build tools (needed by Triton/Unsloth)
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.10 python3-pip python3.10-venv python3-dev \
@@ -26,37 +24,32 @@ ENV PATH="/home/user/.local/bin:$PATH"
 
 WORKDIR /app
 
-# --- Dependencies ---
-# 1. Install server deps (cached across builds)
+# 1. Server deps
 COPY --chown=user requirements.txt .
-RUN pip install --no-cache-dir --upgrade -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# 2. Install PyTorch 2.6.0 with CUDA 12.1 (supports torch.int1 for torchao)
-RUN pip install --no-cache-dir \
-    torch==2.6.0 \
-    --extra-index-url https://download.pytorch.org/whl/cu121
+# 2. PyTorch 2.6.0 + CUDA 12.1
+RUN pip install --no-cache-dir torch==2.6.0 --extra-index-url https://download.pytorch.org/whl/cu121
 
-# 3. Install training deps with pinned compatible versions
+# 3. torchao 0.8.0 (compatible with torch 2.6, satisfies transformers import)
+RUN pip install --no-cache-dir torchao==0.8.0
+
+# 4. Training deps (no unsloth here)
 COPY --chown=user requirements-training.txt .
-RUN pip install --no-cache-dir --upgrade -r requirements-training.txt
+RUN pip install --no-cache-dir -r requirements-training.txt
 
-# --- Application code ---
+# 5. Unsloth --no-deps (avoids torchao>=0.13 conflict)
+RUN pip install --no-cache-dir --no-deps unsloth==2025.11.1 unsloth_zoo
+
+# --- App code ---
 COPY --chown=user src/ /app/src/
 COPY --chown=user training/ /app/training/
-
-COPY --chown=user app.py /app/
-COPY --chown=user run_training.py /app/
-COPY --chown=user inference.py /app/
-COPY --chown=user entrypoint.sh /app/
-
+COPY --chown=user app.py run_training.py inference.py entrypoint.sh /app/
 COPY --chown=user static/ /app/static/
-
-COPY --chown=user pyproject.toml /app/
-COPY --chown=user openenv.yaml /app/
+COPY --chown=user pyproject.toml openenv.yaml /app/
 
 RUN chmod +x entrypoint.sh
 
-# OPENGRID_MODE=training → GRPO pipeline, OPENGRID_MODE=server → UI (default)
 EXPOSE 7860
 
 HEALTHCHECK --interval=60s --timeout=10s --start-period=600s \
