@@ -1,32 +1,24 @@
-# Hugging Face Docker Space — OpenGrid
-# Docs: https://huggingface.co/docs/hub/spaces-sdks-docker
+# OpenGrid GRPO Training Space — Runs on A10G GPU
+# After training completes, serves results on port 7860
 
 FROM python:3.10-slim
 
-LABEL org.opencontainers.image.title="OpenGrid"
-LABEL org.opencontainers.image.description="Renewable energy grid load-balancing environment"
-LABEL openenv="true"
+LABEL org.opencontainers.image.title="OpenGrid GRPO Training"
+LABEL org.opencontainers.image.description="GRPO training for power grid multi-agent controller"
 
-# Create non-root user required by HF Spaces
 RUN useradd -m -u 1000 user
 USER user
 ENV PATH="/home/user/.local/bin:$PATH"
 
 WORKDIR /app
 
-# Install dependencies
-COPY --chown=user requirements.txt .
-RUN pip install --no-cache-dir --upgrade -r requirements.txt
+# Install training dependencies
+COPY --chown=user requirements-training.txt .
+RUN pip install --no-cache-dir --upgrade -r requirements-training.txt
 
 # Copy application code
 COPY --chown=user . /app
 
-# Expose HF Spaces default port
+# Training entrypoint: runs GRPO then serves results
 EXPOSE 7860
-
-# Healthcheck
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s \
-    CMD python -c "import httpx; httpx.get('http://localhost:7860/health').raise_for_status()" || exit 1
-
-# Run the server
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7860"]
+CMD ["python", "run_training.py"]
