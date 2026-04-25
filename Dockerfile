@@ -9,11 +9,16 @@ LABEL org.opencontainers.image.description="Renewable energy grid load-balancing
 LABEL openenv="true"
 
 # Install Python 3.10 and build tools (needed by Triton/Unsloth)
+USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.10 python3-pip python3.10-venv build-essential && \
+    python3.10 python3-pip python3.10-venv python3-dev \
+    build-essential gcc g++ && \
     ln -sf /usr/bin/python3.10 /usr/bin/python && \
     ln -sf /usr/bin/pip3 /usr/bin/pip && \
     rm -rf /var/lib/apt/lists/*
+
+ENV CC=/usr/bin/gcc
+ENV CXX=/usr/bin/g++
 
 RUN useradd -m -u 1000 user
 USER user
