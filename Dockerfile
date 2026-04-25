@@ -8,9 +8,9 @@ LABEL org.opencontainers.image.title="OpenGrid"
 LABEL org.opencontainers.image.description="Renewable energy grid load-balancing environment"
 LABEL openenv="true"
 
-# Install Python 3.10
+# Install Python 3.10 and build tools (needed by Triton/Unsloth)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.10 python3-pip python3.10-venv && \
+    python3.10 python3-pip python3.10-venv build-essential && \
     ln -sf /usr/bin/python3.10 /usr/bin/python && \
     ln -sf /usr/bin/pip3 /usr/bin/pip && \
     rm -rf /var/lib/apt/lists/*
