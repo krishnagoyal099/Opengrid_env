@@ -1,20 +1,17 @@
-# Core env
+# Training dependencies only — no unsloth (causes 10+ min dep resolution)
+torch
+transformers>=4.45.0,<5.0
+trl>=0.12.0,<2.0
+peft>=0.13.0
+accelerate>=1.0.0
+datasets>=3.0.0
+bitsandbytes
+
+# Shared with environment
 fastapi
 uvicorn[standard]
 pydantic>=2.0
 numpy
 networkx
 matplotlib
-openai
 httpx
-openenv-core>=0.2.0
-
-# Training
-torch
-transformers
-trl>=0.17.0
-peft
-accelerate
-bitsandbytes
-datasets
-unsloth

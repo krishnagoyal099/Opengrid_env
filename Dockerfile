@@ -1,8 +1,6 @@
 # Hugging Face Docker Space — OpenGrid
-# Docs: https://huggingface.co/docs/hub/spaces-sdks-docker
-#
-# This Dockerfile serves both the UI Space and the Training Space.
-# Set OPENGRID_MODE=training to run GRPO training instead of the server.
+# Serves both the UI dashboard AND GRPO training.
+# Set env OPENGRID_MODE=training for training mode.
 
 FROM python:3.10-slim
 
@@ -10,34 +8,46 @@ LABEL org.opencontainers.image.title="OpenGrid"
 LABEL org.opencontainers.image.description="Renewable energy grid load-balancing environment"
 LABEL openenv="true"
 
-# Create non-root user required by HF Spaces
 RUN useradd -m -u 1000 user
 USER user
 ENV PATH="/home/user/.local/bin:$PATH"
 
 WORKDIR /app
 
-# Install dependencies (both server and training)
+# --- Dependencies ---
+# Install server deps first (cached across builds)
 COPY --chown=user requirements.txt .
+RUN pip install --no-cache-dir --upgrade -r requirements.txt
+
+# Install training deps (only re-runs if training reqs change)
 COPY --chown=user requirements-training.txt .
-RUN pip install --no-cache-dir --upgrade -r requirements.txt \
-    && pip install --no-cache-dir --upgrade -r requirements-training.txt
+RUN pip install --no-cache-dir --upgrade -r requirements-training.txt
 
-# Copy application code
-COPY --chown=user . /app
+# --- Application code (selective COPY for lean images) ---
+# Core Python modules
+COPY --chown=user src/ /app/src/
+COPY --chown=user training/ /app/training/
 
-# Make entrypoint executable
+# Entry points
+COPY --chown=user app.py /app/
+COPY --chown=user run_training.py /app/
+COPY --chown=user inference.py /app/
+COPY --chown=user entrypoint.sh /app/
+
+# Frontend (small, needed for server mode)
+COPY --chown=user static/ /app/static/
+
+# Config
+COPY --chown=user pyproject.toml /app/
+COPY --chown=user openenv.yaml /app/
+
 RUN chmod +x entrypoint.sh
 
-# Default to server mode (override with OPENGRID_MODE=training)
+# Default: server mode. Set OPENGRID_MODE=training for GRPO.
 ENV OPENGRID_MODE=server
-
-# Expose HF Spaces default port
 EXPOSE 7860
 
-# Healthcheck (only applies in server mode)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s \
     CMD python -c "import httpx; httpx.get('http://localhost:7860/health').raise_for_status()" || exit 1
 
-# Entrypoint switches between server and training
 CMD ["./entrypoint.sh"]
