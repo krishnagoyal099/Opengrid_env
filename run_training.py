@@ -190,6 +190,8 @@ def run_grpo_training():
     print("\n[4/6] Starting GRPO training...")
     from trl import GRPOTrainer, GRPOConfig
     from datasets import Dataset
+    import inspect as _inspect
+    _grpo_params = set(_inspect.signature(GRPOConfig.__init__).parameters)
 
     _bf16 = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
     _fp16 = torch.cuda.is_available() and not _bf16
@@ -218,27 +220,40 @@ def run_grpo_training():
 
         return compute_grpo_reward_env(texts, obs_dicts, task_config, horizon=1)
 
+    # Set generation config explicitly so EOS is always respected and
+    # generation never runs to max_completion_length every single time.
+    from transformers import GenerationConfig
+    model.generation_config = GenerationConfig(
+        do_sample=True,
+        temperature=0.7,
+        top_p=0.9,
+        pad_token_id=tokenizer.pad_token_id,
+        eos_token_id=tokenizer.eos_token_id,
+        max_new_tokens=96,
+    )
+
     grpo_config = GRPOConfig(
         output_dir="training/outputs/grpo_checkpoints",
         num_train_epochs=3,
         per_device_train_batch_size=2,
-        gradient_accumulation_steps=2,   # was 8 — first visible step lands ~4x sooner
+        gradient_accumulation_steps=2,
         learning_rate=1e-5,
-        logging_steps=1,                  # was 5 — see loss every step
+        logging_steps=1,
         save_steps=50,
-        max_prompt_length=1024,           # default 512 truncates Karnataka prompts
-        max_completion_length=96,         # was 128 — ~25% faster generation
+        max_prompt_length=1024,
+        max_completion_length=96,
         num_generations=2,
-        temperature=0.7,                  # was 0.9 default — less wasted sampling
         report_to="none",
         remove_unused_columns=False,
         bf16=_bf16,
         fp16=_fp16,
         gradient_checkpointing=True,
         gradient_checkpointing_kwargs={"use_reentrant": False},
-        optim="paged_adamw_8bit",         # canonical for QLoRA; adafactor fights bf16+bnb
+        optim="paged_adamw_8bit",
         warmup_ratio=0.05,
         lr_scheduler_type="cosine",
+        **({'torch_compile': False} if 'torch_compile' in _grpo_params else {}),
+        **({'use_vllm': False} if 'use_vllm' in _grpo_params else {}),
     )
 
     train_dataset = Dataset.from_dict({"prompt": prompts, "obs_context": obs_contexts})
@@ -250,6 +265,21 @@ def run_grpo_training():
         reward_funcs=reward_fn, processing_class=tokenizer,
     )
 
+    # ── Sanity-check generation before handing off to GRPO ──
+    # If this hangs, the model/tokenizer setup is the problem.
+    print("  [DEBUG] Testing model generation (should complete in <30s)...")
+    _test_inputs = tokenizer("Hello", return_tensors="pt").to(model.device)
+    with torch.no_grad():
+        _out = model.generate(
+            **_test_inputs,
+            max_new_tokens=8,
+            do_sample=False,
+            pad_token_id=tokenizer.pad_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+        )
+    print(f"  [DEBUG] Generation OK: {tokenizer.decode(_out[0][-8:], skip_special_tokens=True)!r}")
+
+    print("  [NOTE] First GRPO step includes Triton JIT — may show 0/N for up to 5 min. That is normal.")
     t0 = time.time()
     trainer.train()
     train_time = time.time() - t0
