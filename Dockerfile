@@ -43,8 +43,8 @@ COPY --chown=user openenv.yaml /app/
 
 RUN chmod +x entrypoint.sh
 
-# Default: server mode. Set OPENGRID_MODE=training for GRPO.
-ENV OPENGRID_MODE=server
+# Default mode controlled by OPENGRID_MODE env var (set via HF secrets)
+# server = FastAPI UI, training = GRPO pipeline
 EXPOSE 7860
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s \
