@@ -1,0 +1,20 @@
+# Core env
+fastapi
+uvicorn[standard]
+pydantic>=2.0
+numpy
+networkx
+matplotlib
+openai
+httpx
+openenv-core>=0.2.0
+
+# Training
+torch
+transformers
+trl>=0.17.0
+peft
+accelerate
+bitsandbytes
+datasets
+unsloth
