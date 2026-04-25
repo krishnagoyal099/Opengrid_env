@@ -48,7 +48,9 @@ BENCHMARK = "OpenGrid"
 MAX_STEPS = 100
 SUCCESS_SCORE_THRESHOLD = 0.5
 
-TASKS = ["task_easy", "task_medium", "task_hard", "task_karnataka"]
+TASKS = ["task_easy", "task_medium", "task_hard",
+         "karnataka_easy", "karnataka_medium", "karnataka_hard",
+         "task_karnataka"]
 
 SYSTEM_PROMPT_SINGLE = """You are a Power Grid Controller AI. Your goal is to maintain grid stability.
 

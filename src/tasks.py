@@ -18,16 +18,18 @@ from typing import Dict, List, Tuple
 __all__ = ['generate_procedural_grid', 'generate_karnataka_task', 'TASKS', 'get_task']
 
 
-# KPTCL-inspired zone names
+# Generic zone names for procedural grids
 def _get_zone_names(num_agents: int) -> List[str]:
-    """Get human-readable zone names for a given agent count."""
-    base_names = [
-        "Bengaluru_Region", "Mysuru_Region", "Kalburagi_Region",
-        "Belagavi_Region", "Mangaluru_Region",
-    ]
-    if num_agents <= len(base_names):
-        return base_names[:num_agents]
+    """Get human-readable zone names for a given agent count (generic)."""
+    generic = ["Zone_Alpha", "Zone_Beta", "Zone_Gamma", "Zone_Delta", "Zone_Epsilon"]
+    if num_agents <= len(generic):
+        return generic[:num_agents]
     return [f"Zone_{i}" for i in range(num_agents)]
+
+
+# KPTCL-specific zone names (only for Karnataka tasks)
+def _get_karnataka_zone_names() -> List[str]:
+    return ["Kalaburagi_Region", "Hubballi_Region", "Mysuru_Region", "Bengaluru_Region"]
 
 
 def _partition_into_zones(G: nx.Graph, num_agents: int) -> Dict[int, int]:
@@ -283,13 +285,13 @@ def generate_karnataka_task(seed: int = 808) -> Dict:
     KPTCL transmission map. Nodes have real GPS coordinates for GIS rendering.
     """
     nodes = [
-        {"id": 0, "name": "Raichur_TPS", "type": "slack", "lat": 16.20, "lon": 77.36, "max_p": 200, "base_p": 0},
+        {"id": 0, "name": "Raichur_TPS", "type": "slack", "lat": 16.36, "lon": 77.34, "max_p": 200, "base_p": 0},
         {"id": 1, "name": "Kalaburagi", "type": "load", "lat": 17.33, "lon": 76.83, "max_p": 0, "base_p": 40},
         {"id": 2, "name": "Belagavi", "type": "load", "lat": 15.85, "lon": 74.50, "max_p": 0, "base_p": 35},
-        {"id": 3, "name": "Hubballi", "type": "load", "lat": 15.36, "lon": 75.13, "max_p": 0, "base_p": 45},
+        {"id": 3, "name": "Hubballi", "type": "load", "lat": 15.36, "lon": 75.12, "max_p": 0, "base_p": 45},
         {"id": 4, "name": "Ballari_TPS", "type": "generator", "lat": 15.14, "lon": 76.92, "max_p": 150, "base_p": 0},
         {"id": 5, "name": "Chitradurga_Wind", "type": "wind", "lat": 14.23, "lon": 76.40, "max_p": 80, "base_p": 0},
-        {"id": 6, "name": "Pavagada_Solar", "type": "solar", "lat": 14.10, "lon": 77.27, "max_p": 120, "base_p": 0},
+        {"id": 6, "name": "Pavagada_Solar", "type": "solar", "lat": 14.10, "lon": 77.28, "max_p": 120, "base_p": 0},
         {"id": 7, "name": "Sharavathi_Hydro", "type": "generator", "lat": 14.18, "lon": 74.83, "max_p": 100, "base_p": 0},
         {"id": 8, "name": "Shivamogga", "type": "load", "lat": 13.93, "lon": 75.57, "max_p": 0, "base_p": 30},
         {"id": 9, "name": "Mangaluru", "type": "load", "lat": 12.87, "lon": 74.88, "max_p": 0, "base_p": 50},
@@ -350,7 +352,7 @@ def generate_karnataka_task(seed: int = 808) -> Dict:
         "difficulty": "karnataka",
         "num_agents": 4,
         "zone_assignments": zone_assignments,
-        "zone_names": ["Kalaburagi_Region", "Hubballi_Region", "Mysuru_Region", "Bengaluru_Region"],
+        "zone_names": _get_karnataka_zone_names(),
         "zone_bus_ids": zone_bus_ids,
         "internal_lines": internal_lines,
         "boundary_lines": boundary_lines,
@@ -380,5 +382,12 @@ TASKS = {
     "task_easy": generate_procedural_grid("easy", seed=101),
     "task_medium": generate_procedural_grid("medium", seed=102),
     "task_hard": generate_procedural_grid("hard", seed=103),
-    "task_karnataka": generate_karnataka_task()
+    "task_karnataka": generate_karnataka_task(),
 }
+
+# Register Karnataka scenario variants (same topology, different difficulty)
+from src.scenarios import KARNATAKA_SCENARIOS, generate_karnataka_scenario  # noqa: E402
+
+for _sid, _cfg in KARNATAKA_SCENARIOS.items():
+    TASKS[_sid] = _cfg
+    _TASK_GENERATORS[_sid] = (lambda d=_sid.replace("karnataka_", ""): generate_karnataka_scenario(d))
