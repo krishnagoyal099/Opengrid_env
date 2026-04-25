@@ -4,6 +4,7 @@ Runs env-grounded GRPO training, saves model + plots,
 then starts a FastAPI server to serve/download results.
 """
 import os
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 import sys
 import json
 import copy
@@ -125,7 +126,7 @@ def run_grpo_training():
     obs_contexts = []
     rng = np.random.RandomState(base_seed)
 
-    for episode in range(30):
+    for episode in range(10):  # 10 episodes → ~600 prompts, fits training time
         ep_config = copy.deepcopy(task_config)
         ep_config['seed'] = base_seed + episode
         env = OpenGridEnv(ep_config)
@@ -208,17 +209,19 @@ def run_grpo_training():
     grpo_config = GRPOConfig(
         output_dir="training/outputs/grpo_checkpoints",
         num_train_epochs=3,
-        per_device_train_batch_size=8,
-        gradient_accumulation_steps=2,
+        per_device_train_batch_size=2,
+        gradient_accumulation_steps=8,
         learning_rate=1e-5,
         logging_steps=5,
         save_steps=50,
-        max_completion_length=256,
-        num_generations=8,
+        max_completion_length=128,
+        num_generations=2,
         report_to="none",
         remove_unused_columns=False,
         bf16=_bf16,
         fp16=_fp16,
+        gradient_checkpointing=True,
+        optim="adafactor",
     )
 
     train_dataset = Dataset.from_dict({"prompt": prompts, "obs_context": obs_contexts})
