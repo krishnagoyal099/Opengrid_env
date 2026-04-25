@@ -37,7 +37,7 @@ COPY --chown=user requirements-training.txt .
 RUN pip install --no-cache-dir -r requirements-training.txt
 
 # 4. Unsloth --no-deps (avoids torchao>=0.13 conflict)
-RUN pip install --no-cache-dir --no-deps unsloth==2025.11.1 unsloth_zoo
+RUN pip install --no-cache-dir --no-deps unsloth==2025.11.1 unsloth_zoo==2025.11.1
 
 # 5. Remove torchao if pulled in (incompatible with torch 2.6, crashes transformers)
 RUN pip uninstall -y torchao 2>/dev/null; true
