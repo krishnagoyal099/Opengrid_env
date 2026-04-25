@@ -2,7 +2,7 @@
 # Serves both the UI dashboard AND GRPO training.
 # Set env OPENGRID_MODE=training for training mode.
 
-FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
+FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
 
 LABEL org.opencontainers.image.title="OpenGrid"
 LABEL org.opencontainers.image.description="Renewable energy grid load-balancing environment"
@@ -31,8 +31,8 @@ WORKDIR /app
 COPY --chown=user requirements.txt .
 RUN pip install --no-cache-dir --upgrade -r requirements.txt
 
-# Install PyTorch with CUDA support (must come before training deps)
-RUN pip install --no-cache-dir torch==2.5.1 --extra-index-url https://download.pytorch.org/whl/cu121
+# Install PyTorch (latest version to support torchao/torch.int1)
+RUN pip install --no-cache-dir torch
 
 # Install training deps (only re-runs if training reqs change)
 COPY --chown=user requirements-training.txt .
