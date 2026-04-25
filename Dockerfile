@@ -2,11 +2,18 @@
 # Serves both the UI dashboard AND GRPO training.
 # Set env OPENGRID_MODE=training for training mode.
 
-FROM python:3.10-slim
+FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
 
 LABEL org.opencontainers.image.title="OpenGrid"
 LABEL org.opencontainers.image.description="Renewable energy grid load-balancing environment"
 LABEL openenv="true"
+
+# Install Python 3.10
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.10 python3-pip python3.10-venv && \
+    ln -sf /usr/bin/python3.10 /usr/bin/python && \
+    ln -sf /usr/bin/pip3 /usr/bin/pip && \
+    rm -rf /var/lib/apt/lists/*
 
 RUN useradd -m -u 1000 user
 USER user
@@ -19,9 +26,12 @@ WORKDIR /app
 COPY --chown=user requirements.txt .
 RUN pip install --no-cache-dir --upgrade -r requirements.txt
 
+# Install PyTorch with CUDA support (must come before training deps)
+RUN pip install --no-cache-dir torch==2.5.1 --extra-index-url https://download.pytorch.org/whl/cu121
+
 # Install training deps (only re-runs if training reqs change)
 COPY --chown=user requirements-training.txt .
-RUN pip install --no-cache-dir --upgrade -r requirements-training.txt
+RUN pip install --no-cache-dir --upgrade --no-deps -r requirements-training.txt
 
 # --- Application code (selective COPY for lean images) ---
 # Core Python modules
@@ -47,7 +57,7 @@ RUN chmod +x entrypoint.sh
 # server = FastAPI UI, training = GRPO pipeline
 EXPOSE 7860
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s \
+HEALTHCHECK --interval=60s --timeout=10s --start-period=600s \
     CMD python -c "import httpx; httpx.get('http://localhost:7860/health').raise_for_status()" || exit 1
 
 CMD ["./entrypoint.sh"]

@@ -414,3 +414,41 @@ def visualize(session_id: str):
 
     img_str = generate_dashboard(hist, obs)
     return {"image_base64": img_str}
+
+
+# ===========================================================================
+# Training Results
+# ===========================================================================
+
+@app.get("/training-results")
+def training_results():
+    """Return GRPO training results if available."""
+    summary_path = pathlib.Path("training/outputs/summary.json")
+    if not summary_path.exists():
+        return {"available": False}
+    with open(summary_path) as f:
+        data = json.load(f)
+    # Check if it was an error
+    if "error" in data:
+        return {"available": True, "error": data["error"]}
+    # Add plot URLs
+    data["available"] = True
+    data["plots"] = {}
+    for name in ["before_after", "training_loss"]:
+        p = pathlib.Path(f"training/outputs/{name}.png")
+        if p.exists():
+            data["plots"][name] = f"/training-plots/{name}"
+    return data
+
+
+@app.get("/training-plots/{name}")
+def training_plot(name: str):
+    """Serve a training plot image."""
+    from fastapi.responses import FileResponse
+    allowed = {"before_after", "training_loss"}
+    if name not in allowed:
+        raise HTTPException(404, "Plot not found")
+    p = pathlib.Path(f"training/outputs/{name}.png")
+    if not p.exists():
+        raise HTTPException(404, "Plot not generated yet")
+    return FileResponse(str(p), media_type="image/png")

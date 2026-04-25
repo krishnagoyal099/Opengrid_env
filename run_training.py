@@ -330,44 +330,6 @@ def run_grpo_training():
     return summary
 
 
-# ── Results Server ────────────────────────────────────────────────
-def serve_results():
-    """Serve training results on port 7860."""
-    from fastapi import FastAPI
-    from fastapi.responses import FileResponse, JSONResponse
-    import uvicorn
-
-    app = FastAPI(title="OpenGrid Training Results")
-
-    @app.get("/")
-    def root():
-        summary_path = Path("training/outputs/summary.json")
-        if summary_path.exists():
-            with open(summary_path) as f:
-                return json.load(f)
-        return {"status": "Training in progress or no results yet"}
-
-    @app.get("/plots/before_after")
-    def before_after():
-        p = Path("training/outputs/before_after.png")
-        if p.exists():
-            return FileResponse(str(p), media_type="image/png")
-        return JSONResponse({"error": "not ready"}, status_code=404)
-
-    @app.get("/plots/loss")
-    def loss():
-        p = Path("training/outputs/training_loss.png")
-        if p.exists():
-            return FileResponse(str(p), media_type="image/png")
-        return JSONResponse({"error": "not ready"}, status_code=404)
-
-    @app.get("/health")
-    def health():
-        return {"status": "ok"}
-
-    uvicorn.run(app, host="0.0.0.0", port=7860)
-
-
 # ── Main ──────────────────────────────────────────────────────────
 if __name__ == "__main__":
     try:
@@ -375,10 +337,14 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\nERROR during training: {e}")
         traceback.print_exc()
-        # Save error so the results server can report it
+        # Save error so the UI can report it
         os.makedirs("training/outputs", exist_ok=True)
         with open("training/outputs/summary.json", "w") as f:
             json.dump({"error": str(e)}, f)
 
-    print("\nStarting results server on port 7860...")
-    serve_results()
+    # Start the full UI server (not a mini results server)
+    # This serves the control room + training results on port 7860
+    print("\nTraining done. Starting full UI server on port 7860...")
+    import uvicorn
+    from app import app
+    uvicorn.run(app, host="0.0.0.0", port=7860)
