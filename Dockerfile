@@ -36,7 +36,7 @@ RUN pip install --no-cache-dir torch==2.5.1 --extra-index-url https://download.p
 
 # Install training deps (only re-runs if training reqs change)
 COPY --chown=user requirements-training.txt .
-RUN pip install --no-cache-dir --upgrade --no-deps -r requirements-training.txt
+RUN pip install --no-cache-dir --upgrade -r requirements-training.txt
 
 # --- Application code (selective COPY for lean images) ---
 # Core Python modules
