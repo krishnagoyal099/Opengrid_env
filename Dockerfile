@@ -21,6 +21,7 @@ ENV CXX=/usr/bin/g++
 RUN useradd -m -u 1000 user
 USER user
 ENV PATH="/home/user/.local/bin:$PATH"
+ENV LD_LIBRARY_PATH="/home/user/.local/lib/python3.10/site-packages/nvidia/nvjitlink/lib:/home/user/.local/lib/python3.10/site-packages/nvidia/cuda_runtime/lib:$LD_LIBRARY_PATH"
 
 WORKDIR /app
 
