@@ -8,17 +8,16 @@ venv/
 .vscode/
 .env
 
-# Docs (keep README for the Space)
-guide.md
-detailed judging criteria.md
-ui_skill.md
-project-spec.md
-codebase_summary.md
+# Documentation (not needed in Docker)
+docs/
 pyrightconfig.json
+
+# Utility scripts (not needed in Docker)
+scripts/
 
 # Generated files
 inference_output.txt
-generate_code_md.py
+codebase_summary.md
 uv.lock
 
 # Training outputs (not needed in Docker image)
@@ -28,4 +27,3 @@ training/outputs/
 
 # Tests not needed in production
 tests/
-test_multiagent.py
