@@ -1,11 +1,19 @@
 #!/bin/bash
 # OpenGrid entrypoint — switches between UI server and GRPO training
-# based on the OPENGRID_MODE environment variable.
-#
-# OPENGRID_MODE=training  → runs GRPO training pipeline
-# OPENGRID_MODE=server    → runs the FastAPI UI server (default)
 
 set -e
+
+# Dynamically find all pip-installed NVIDIA library paths
+NVIDIA_LIBS=$(python -c "
+import glob, os
+paths = glob.glob('/home/user/.local/lib/python3.10/site-packages/nvidia/*/lib')
+print(':'.join(paths))
+" 2>/dev/null || echo "")
+
+if [ -n "$NVIDIA_LIBS" ]; then
+    export LD_LIBRARY_PATH="${NVIDIA_LIBS}:${LD_LIBRARY_PATH}"
+    echo "Set LD_LIBRARY_PATH with NVIDIA libs: $NVIDIA_LIBS"
+fi
 
 MODE="${OPENGRID_MODE:-server}"
 
