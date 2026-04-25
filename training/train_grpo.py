@@ -227,14 +227,20 @@ def rollout_multi_agent(env: OpenGridEnv, generate_fn, task_config: dict) -> dic
 # GRPO Reward Functions
 # ============================================================================
 
-# Cache task configs to avoid re-deepcopy on every reward call
-_REWARD_ENV_CACHE = {}
+# Cache one env instance per task config — re-instantiating + deepcopy + reset
+# on every reward call adds significant per-step latency for GRPO.
+_REWARD_ENV_CACHE: dict = {}
+_REWARD_CALL_COUNT = 0
 
 
 def _get_reward_env(task_config: dict) -> OpenGridEnv:
-    """Get a fresh environment for reward computation."""
-    env = OpenGridEnv(copy.deepcopy(task_config))
-    env.reset()
+    """Return a cached env for this task_config, building it once."""
+    key = id(task_config)
+    env = _REWARD_ENV_CACHE.get(key)
+    if env is None:
+        env = OpenGridEnv(copy.deepcopy(task_config))
+        env.reset()
+        _REWARD_ENV_CACHE[key] = env
     return env
 
 
@@ -258,6 +264,11 @@ def compute_grpo_reward_env(
     """
     from src.baseline import heuristic_policy
 
+    global _REWARD_CALL_COUNT
+    _REWARD_CALL_COUNT += 1
+    if _REWARD_CALL_COUNT <= 3 or _REWARD_CALL_COUNT % 50 == 0:
+        print(f"  [reward_fn] call #{_REWARD_CALL_COUNT} | n_completions={len(completions)}", flush=True)
+
     rewards = []
     for completion, obs_dict in zip(completions, observations):
         if obs_dict is None:
@@ -272,36 +283,58 @@ def compute_grpo_reward_env(
                 rewards.append(0.0)
                 continue
 
+        freq = obs_dict.get('grid_frequency', 50.0)
+        freq_error = freq - 50.0
+
+        # ── 1. JSON validity signal — biggest discriminator ──
+        # Raw text check first (faster than extract_action)
+        raw_has_json = '{' in completion and '}' in completion
+        try:
+            import re as _re
+            _m = _re.search(r'\{[\s\S]*\}', completion)
+            _parsed = json.loads(_m.group()) if _m else None
+            json_valid = _parsed is not None and 'bus_adjustments' in _parsed
+        except Exception:
+            json_valid = False
+
+        if not json_valid:
+            # Invalid / missing JSON — strong penalty so the group has variance
+            rewards.append(-0.5)
+            continue
+
         action = extract_action(completion)
         has_adjustments = bool(action.bus_adjustments)
 
-        # ── 1. Format reward (small but keeps gradient alive) ──
+        # ── 2. Format reward — directional correctness ──
         format_score = 0.0
         if has_adjustments:
-            format_score += 0.05
-        else:
-            freq = obs_dict.get('grid_frequency', 50.0)
-            if abs(freq - 50.0) < 0.05:
-                format_score += 0.05  # No-op when stable is fine
+            total_delta = sum(a.delta for a in action.bus_adjustments)
+            # Reward correct direction relative to frequency error
+            if abs(freq_error) > 0.05:
+                # freq too low → need positive delta; freq too high → negative delta
+                correct_dir = (freq_error < 0 and total_delta > 0) or \
+                              (freq_error > 0 and total_delta < 0)
+                format_score = 0.3 if correct_dir else -0.3
             else:
-                format_score -= 0.05  # No-op during deviation is bad
+                # Stable grid: small action is fine, large one wastes resources
+                format_score = 0.1 if abs(total_delta) < 5.0 else -0.1
+        else:
+            # No-op: fine when stable, bad when deviating
+            format_score = 0.1 if abs(freq_error) < 0.05 else -0.3
 
-        # ── 2. Environment-grounded reward ──
+        # ── 3. Environment-grounded reward ──
         try:
             env = _get_reward_env(task_config)
             env._set_state(obs_dict)
 
-            # Step with the LLM's proposed action
             obs_after, reward, done, info = env.step(action)
             env_score = reward.value
 
-            # Blackout = catastrophic
             if info.is_blackout:
                 rewards.append(-1.0)
                 continue
 
-            # ── 3. Mini-rollout: what happens next? ──
-            # Run a few more steps with heuristic to measure trajectory impact
+            # horizon=1: just immediate reward — avoids 24 extra env steps per optimizer step
             rollout_reward = 0.0
             for _ in range(horizon - 1):
                 if done:
@@ -313,16 +346,13 @@ def compute_grpo_reward_env(
                     rollout_reward -= 10.0
                     break
 
-            # Combine: immediate reward + discounted future
             total_env_score = env_score + 0.5 * rollout_reward
 
-            # Normalize to [-1, 1] range
-            # Typical per-step reward is ~0.5 to 1.5, rollout adds ~1-4
-            # So total_env_score is roughly in [-10, 4] range
-            normalized = total_env_score / 5.0
+            # Narrower normalizer → wider spread across completions
+            # Typical per-step reward: 0.5–1.5 (good), -100 (blackout)
+            normalized = total_env_score / 3.0
 
-        except Exception as e:
-            # Fallback: use lightweight heuristic scoring
+        except Exception:
             normalized = _compute_heuristic_score(action, obs_dict)
 
         total = format_score + normalized
@@ -379,11 +409,14 @@ def train_grpo(args):
     """Main GRPO training loop using TRL."""
     try:
         from trl import GRPOTrainer, GRPOConfig
-        from transformers import AutoTokenizer, AutoModelForCausalLM
+        from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig
     except ImportError:
         print("ERROR: TRL not installed. Run: pip install trl transformers")
         print("For quantized training: pip install unsloth")
         sys.exit(1)
+
+    import inspect as _inspect
+    _grpo_params = set(_inspect.signature(GRPOConfig.__init__).parameters)
 
     print(f"[TRAIN] Model: {args.model}")
     print(f"[TRAIN] Task: {args.task}")
@@ -518,21 +551,30 @@ def train_grpo(args):
             else:
                 obs_dicts.append(ctx)
 
-        return compute_grpo_reward_env(texts, obs_dicts, task_config, horizon=3)
+        return compute_grpo_reward_env(texts, obs_dicts, task_config, horizon=1)
 
-    # GRPO Config — tuned for sustained learning signal
+    # GRPO Config — tuned for sustained learning signal AND visible progress
     grpo_config = GRPOConfig(
         output_dir=str(Path(args.output_dir) / "grpo_checkpoints"),
         num_train_epochs=args.epochs,
         per_device_train_batch_size=args.batch_size,
-        gradient_accumulation_steps=max(1, 16 // args.batch_size),
-        learning_rate=1e-5,           # Was 5e-6 — slightly more aggressive
-        logging_steps=5,
+        gradient_accumulation_steps=max(1, 8 // args.batch_size),
+        learning_rate=1e-5,
+        logging_steps=1,
         save_steps=50,
-        max_completion_length=256,
-        num_generations=8,            # Was 4 — wider group for better ranking signal
+        max_prompt_length=1024,
+        max_completion_length=96,
+        num_generations=4,
+        temperature=0.7,
         report_to="none",
         remove_unused_columns=False,
+        gradient_checkpointing=True,
+        gradient_checkpointing_kwargs={"use_reentrant": False},
+        optim="paged_adamw_8bit",
+        warmup_ratio=0.05,
+        lr_scheduler_type="cosine",
+        **({'torch_compile': False} if 'torch_compile' in _grpo_params else {}),
+        **({'use_vllm': False} if 'use_vllm' in _grpo_params else {}),
     )
 
     # Create dataset — include obs_context so TRL passes it to reward_fn

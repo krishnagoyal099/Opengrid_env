@@ -242,7 +242,7 @@ def run_grpo_training():
         save_steps=50,
         max_prompt_length=1024,
         max_completion_length=96,
-        num_generations=2,
+        num_generations=4,             # min for meaningful GRPO variance; 2 gives reward_std=0
         report_to="none",
         remove_unused_columns=False,
         bf16=_bf16,
