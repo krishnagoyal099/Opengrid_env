@@ -229,19 +229,19 @@ def run_grpo_training():
         top_p=0.9,
         pad_token_id=tokenizer.pad_token_id,
         eos_token_id=tokenizer.eos_token_id,
-        max_new_tokens=96,
+        max_new_tokens=64,
     )
 
     grpo_config = GRPOConfig(
         output_dir="training/outputs/grpo_checkpoints",
         num_train_epochs=3,
-        per_device_train_batch_size=4,   # must equal num_generations on 1 GPU
+        per_device_train_batch_size=4,
         gradient_accumulation_steps=4,
         learning_rate=1e-5,
         logging_steps=1,
         save_steps=50,
-        max_prompt_length=1024,
-        max_completion_length=96,
+        max_prompt_length=512,
+        max_completion_length=64,
         num_generations=4,
         report_to="none",
         remove_unused_columns=False,
