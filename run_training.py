@@ -414,7 +414,13 @@ if __name__ == "__main__":
 
     # Start the full UI server (not a mini results server)
     # This serves the control room + training results on port 7860
-    print("\nTraining done. Starting full UI server on port 7860...")
-    import uvicorn
-    from app import app
-    uvicorn.run(app, host="0.0.0.0", port=7860)
+    # NOTE: In training mode, entrypoint.sh starts the server in background
+    # before training. This block is kept for standalone execution only.
+    if os.environ.get("OPENGRID_MODE") != "training":
+        print("\nTraining done. Starting full UI server on port 7860...")
+        import uvicorn
+        from app import app
+        uvicorn.run(app, host="0.0.0.0", port=7860)
+    else:
+        print("\nTraining done. UI server already running in background.")
+

@@ -21,7 +21,23 @@ if [ "$MODE" = "training" ]; then
     echo "========================================"
     echo "  OpenGrid — GRPO Training Mode"
     echo "========================================"
-    exec python run_training.py
+
+    # Start the UI server in background IMMEDIATELY so HF health check passes.
+    # Training output is written to training/outputs/ and the UI will serve it
+    # once training completes. The server stays alive throughout training.
+    echo "Starting background UI server on port 7860 (health check)..."
+    uvicorn app:app --host 0.0.0.0 --port 7860 &
+    UI_PID=$!
+
+    # Give server a moment to bind the port before training grabs GPU memory
+    sleep 5
+
+    # Run training (foreground)
+    python run_training.py
+
+    # Training finished — server is already running, just wait for it
+    echo "Training complete. UI server (PID $UI_PID) continues serving results."
+    wait $UI_PID
 else
     echo "========================================"
     echo "  OpenGrid — Control Room Server"
