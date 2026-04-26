@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="OpenGrid — Multi-Agent POMDP Power Grid Control Room with Safe RL">
     <title>OpenGrid | Control Room</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://api.fontshare.com/v2/css?f[]=bespoke-stencil@400,700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css?v=16">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <link rel="icon" href="/static/logo.png" type="image/png">
@@ -110,12 +111,27 @@
     <aside class="left-panel">
 
         <!-- Frequency Display -->
-        <div class="card">
-            <div class="card-title">Grid Frequency</div>
+        <div class="card freq-card">
+            <div class="card-title">
+                <span>Grid Frequency</span>
+                <span class="freq-nominal-tag">Nom 50.00 Hz</span>
+            </div>
             <div class="freq-display">
                 <div class="freq-arc-container" id="freqArc"></div>
-                <div class="freq-deviation" id="freqDev">Deviation: 0.00 Hz | Nominal: 50.00 Hz</div>
-                <div class="grid-condition normal" id="gridCondition">NORMAL</div>
+                <div class="freq-readout">
+                    <div class="freq-value-big" id="freqValueBig">50.00</div>
+                    <div class="freq-unit">Hz</div>
+                </div>
+                <div class="freq-delta-row">
+                    <div class="freq-delta-chip" id="freqDeltaChip">
+                        <span class="freq-delta-arrow" id="freqDeltaArrow">●</span>
+                        <span id="freqDeltaText">Δ 0.000 Hz</span>
+                    </div>
+                    <div class="grid-condition normal" id="gridCondition">
+                        <span class="cond-dot"></span>
+                        <span id="gridConditionLabel">NORMAL</span>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -182,12 +198,16 @@
             <div class="legend-item"><span class="legend-dot" style="background:#00e5a0;"></span> Slack</div>
             <div class="legend-item"><span class="legend-dot" style="background:#f5a623;"></span> Generator</div>
             <div class="legend-item"><span class="legend-dot" style="background:#e94560;"></span> Load</div>
-            <div class="legend-item"><span class="legend-dot" style="background:#4a90d9;"></span> Battery</div>
+            <div class="legend-item"><span class="legend-dot" style="background:#000000;"></span> Battery</div>
             <div class="legend-item"><span class="legend-dot" style="background:#ffeb3b;"></span> Solar</div>
             <div class="legend-item"><span class="legend-dot" style="background:#64ffda;"></span> Wind</div>
             <div class="legend-line"><span class="legend-line-sample normal"></span> Normal</div>
             <div class="legend-line"><span class="legend-line-sample warn"></span> Congested</div>
             <div class="legend-line"><span class="legend-line-sample crit"></span> Overloaded</div>
+            <div id="agentLegendContainer" style="margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 8px;"></div>
+            <div style="margin-top: 8px; font-size: 8px; color: var(--text-muted); font-style: italic;">
+                * Scroll to zoom for a clearer view
+            </div>
         </div>
         <div class="bus-tooltip" id="busTooltip">
             <div class="tt-title" id="ttTitle">Bus 0</div>
@@ -224,6 +244,6 @@
 
 </div>
 
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v=20"></script>
 </body>
 </html>

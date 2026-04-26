@@ -32,9 +32,9 @@ tasks:
       endpoint: /grader
       score_range: [0.02, 0.98]
   - id: task_karnataka
-    name: Karnataka KPTCL Grid (5 buses, 2 agents, real-world topology)
-    description: Realistic Karnataka power grid with POMDP multi-agent coordination
-    agents: 2
+    name: Karnataka KPTCL Grid (15 buses, 4 agents, real-world topology)
+    description: Realistic 15-bus Karnataka power grid with 4-zone POMDP multi-agent coordination
+    agents: 4
     grader:
       endpoint: /grader
       score_range: [0.02, 0.98]

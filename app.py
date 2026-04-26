@@ -12,6 +12,7 @@ from src.grader import RobustnessGrader, normalize_score, _SCORE_EPSILON, _clamp
 from src.baseline import heuristic_policy, llm_policy
 from src.visualization import generate_dashboard
 import copy
+import json
 import uuid
 import os
 import time
@@ -158,6 +159,7 @@ def get_tasks():
             "num_agents": v.get("num_agents", 1),
             "zone_names": v.get("zone_names", []),
             "buses": v.get("buses", []),
+            "lines": v.get("lines", []),
             "action_schema": action_schema,
             "observation_schema": obs_schema
         } for k, v in TASKS.items()
@@ -434,7 +436,7 @@ def training_results():
     # Add plot URLs
     data["available"] = True
     data["plots"] = {}
-    for name in ["before_after", "training_loss"]:
+    for name in ["before_after", "training_loss", "training_reward_curve"]:
         p = pathlib.Path(f"training/outputs/{name}.png")
         if p.exists():
             data["plots"][name] = f"/training-plots/{name}"
@@ -445,7 +447,7 @@ def training_results():
 def training_plot(name: str):
     """Serve a training plot image."""
     from fastapi.responses import FileResponse
-    allowed = {"before_after", "training_loss"}
+    allowed = {"before_after", "training_loss", "training_reward_curve"}
     if name not in allowed:
         raise HTTPException(404, "Plot not found")
     p = pathlib.Path(f"training/outputs/{name}.png")

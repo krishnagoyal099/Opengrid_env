@@ -1,6 +1,6 @@
 // OpenGrid Control Room
 const API = window.location.origin;
-const AGENT_COLORS = ['#00bfff','#ff69b4','#ff6347','#32cd32','#9370db','#ffa500'];
+const AGENT_COLORS = ['#e2e8f0','#ff69b4','#ff6347','#32cd32','#9370db','#ffa500'];
 const AGENT_NAMES = ['Bengaluru','Mysuru','Kalburagi','Hassan','Tumakuru','Bagalkot'];
 
 // Real Karnataka state boundary path (source: @svg-maps/india)
@@ -203,48 +203,129 @@ function updateHeader() {
 function updateFrequency() {
     const freq = getAvgFreq();
     const cls = freqClass(freq);
-    const colors = {normal:'#00e5a0',warning:'#ffd700',critical:'#ff3d3d'};
+    const colors = {normal:'#4a7c59', warning:'#c4a45e', critical:'#7c203a'};
     const col = colors[cls];
-    // Arc gauge
-    const container = document.getElementById('freqArc');
-    const W=200, H=110, cx=100, cy=100, r=80;
-    const minF=49, maxF=51;
-    const pct = Math.max(0,Math.min(1,(freq-minF)/(maxF-minF)));
-    const startA=Math.PI, endA=0;
-    const needleA = startA - pct*(startA-endA);
-    let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
-    // Background arc
-    svg += `<path d="M${cx-r},${cy} A${r},${r} 0 0,1 ${cx+r},${cy}" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10" stroke-linecap="round"/>`;
-    // Colored segments
-    const segs = [{f:49,t:49.5,c:'#ff3d3d'},{f:49.5,t:49.85,c:'#ffd700'},{f:49.85,t:50.15,c:'#00e5a0'},{f:50.15,t:50.5,c:'#ffd700'},{f:50.5,t:51,c:'#ff3d3d'}];
+
+    // ── Geometry ──────────────────────────────────────────────
+    const W = 240, H = 140;
+    const cx = W / 2, cy = 118;
+    const rOuter = 96, rInner = 78, rTickIn = 72, rTickOut = 78, rLabel = 60;
+    const minF = 49, maxF = 51;
+    const pct = Math.max(0, Math.min(1, (freq - minF) / (maxF - minF)));
+    const startA = Math.PI, endA = 0;
+    const angleOf = f => startA - ((f - minF) / (maxF - minF)) * (startA - endA);
+    const needleA = angleOf(freq);
+
+    const polar = (cx0, cy0, r, a) => [cx0 + r * Math.cos(a), cy0 - r * Math.sin(a)];
+
+    // ── Build SVG ──────────────────────────────────────────────
+    let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" class="freq-svg">`;
+
+    svg += `
+        <defs>
+            <linearGradient id="needle-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="${col}" stop-opacity="1"/>
+                <stop offset="100%" stop-color="${col}" stop-opacity="0.3"/>
+            </linearGradient>
+        </defs>
+    `;
+
+    // Outer subtle ring
+    {
+        const [x1, y1] = polar(cx, cy, rOuter, startA);
+        const [x2, y2] = polar(cx, cy, rOuter, endA);
+        svg += `<path d="M${x1},${y1} A${rOuter},${rOuter} 0 0,1 ${x2},${y2}" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>`;
+    }
+
+    // Background arc track
+    {
+        const [x1, y1] = polar(cx, cy, (rOuter + rInner) / 2, startA);
+        const [x2, y2] = polar(cx, cy, (rOuter + rInner) / 2, endA);
+        svg += `<path d="M${x1},${y1} A${(rOuter+rInner)/2},${(rOuter+rInner)/2} 0 0,1 ${x2},${y2}" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="${rOuter - rInner}" stroke-linecap="butt"/>`;
+    }
+
+    // Colored zone segments
+    const segs = [
+        {f: 49.00, t: 49.50, c: '#7c203a'},
+        {f: 49.50, t: 49.85, c: '#c4a45e'},
+        {f: 49.85, t: 50.15, c: '#4a7c59'},
+        {f: 50.15, t: 50.50, c: '#c4a45e'},
+        {f: 50.50, t: 51.00, c: '#7c203a'},
+    ];
+    const rMid = (rOuter + rInner) / 2;
+    const segW = 2; // Very thin track
     segs.forEach(s => {
-        const a1=Math.PI-((s.f-minF)/(maxF-minF))*Math.PI;
-        const a2=Math.PI-((s.t-minF)/(maxF-minF))*Math.PI;
-        const x1=cx+r*Math.cos(a1),y1=cy-r*Math.sin(a1);
-        const x2=cx+r*Math.cos(a2),y2=cy-r*Math.sin(a2);
-        svg += `<path d="M${x1},${y1} A${r},${r} 0 0,0 ${x2},${y2}" fill="none" stroke="${s.c}" stroke-width="6" opacity="0.25" stroke-linecap="round"/>`;
+        const a1 = angleOf(s.f), a2 = angleOf(s.t);
+        const [x1, y1] = polar(cx, cy, rMid, a1);
+        const [x2, y2] = polar(cx, cy, rMid, a2);
+        const isActive = freq >= s.f && freq < s.t;
+        const opacity = isActive ? 1 : 0.3;
+        svg += `<path d="M${x1},${y1} A${rMid},${rMid} 0 0,0 ${x2},${y2}" fill="none" stroke="${s.c}" stroke-width="${segW}" opacity="${opacity}" />`;
     });
-    // Needle
-    const nx=cx+(r-12)*Math.cos(needleA), ny=cy-(r-12)*Math.sin(needleA);
-    svg += `<line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="${col}" stroke-width="2.5" stroke-linecap="round"/>`;
-    svg += `<circle cx="${cx}" cy="${cy}" r="4" fill="${col}"/>`;
-    // Value text
-    svg += `<text x="${cx}" y="${cy-20}" text-anchor="middle" fill="${col}" font-family="JetBrains Mono" font-size="28" font-weight="700" style="text-shadow:0 0 15px ${col}40">${freq.toFixed(2)}</text>`;
-    svg += `<text x="${cx}" y="${cy-6}" text-anchor="middle" fill="#90a4ae" font-family="Inter" font-size="11">Hz</text>`;
+
+    // Tick marks at every 0.25 Hz, major at 0.5 Hz
+    for (let f = minF; f <= maxF + 0.0001; f += 0.25) {
+        const major = Math.abs(f - Math.round(f * 2) / 2) < 0.001 && Math.abs((f * 2) % 1) < 0.001;
+        const isHalf = Math.abs(f * 2 - Math.round(f * 2)) < 0.001;
+        const a = angleOf(f);
+        const inner = isHalf ? rTickIn - 4 : rTickIn;
+        const outer = isHalf ? rTickOut + 2 : rTickOut;
+        const [x1, y1] = polar(cx, cy, inner, a);
+        const [x2, y2] = polar(cx, cy, outer, a);
+        svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${isHalf ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.25)'}" stroke-width="${isHalf ? 1.5 : 1}"/>`;
+    }
+
     // Scale labels
-    svg += `<text x="18" y="${cy+14}" fill="#546e7a" font-size="8" font-family="JetBrains Mono">49.0</text>`;
-    svg += `<text x="${W-30}" y="${cy+14}" fill="#546e7a" font-size="8" font-family="JetBrains Mono">51.0</text>`;
-    svg += `<text x="${cx}" y="12" text-anchor="middle" fill="#546e7a" font-size="8" font-family="JetBrains Mono">50.0</text>`;
+    [
+        {f: 49.0, txt: '49'},
+        {f: 49.5, txt: '49.5'},
+        {f: 50.0, txt: '50'},
+        {f: 50.5, txt: '50.5'},
+        {f: 51.0, txt: '51'},
+    ].forEach(({f, txt}) => {
+        const a = angleOf(f);
+        const [x, y] = polar(cx, cy, rLabel, a);
+        let anchor = 'middle';
+        if (f === 49.0) anchor = 'start';
+        if (f === 51.0) anchor = 'end';
+        const yOff = (f === 49.0 || f === 51.0) ? 0 : 4;
+        svg += `<text x="${x}" y="${y + yOff}" text-anchor="${anchor}" fill="#a3a3a3" font-family="'Bespoke Stencil', sans-serif" font-size="10" font-weight="400" letter-spacing="0.5">${txt}</text>`;
+    });
+
+    // Needle (Razor sharp minimalist line)
+    const tipR = rInner - 2;
+    const [tipX, tipY] = polar(cx, cy, tipR, needleA);
+    
+    svg += `<line x1="${cx}" y1="${cy}" x2="${tipX}" y2="${tipY}" stroke="${col}" stroke-width="1.2" stroke-linecap="butt" opacity="0.9"/>`;
+
+    // Minimalist Hub
+    svg += `<circle cx="${cx}" cy="${cy}" r="3" fill="#000" stroke="${col}" stroke-width="1.2"/>`;
+
     svg += '</svg>';
-    container.innerHTML = svg;
-    document.getElementById('freqDev').textContent = `Deviation: ${(freq-50).toFixed(3)} Hz | Nominal: 50.00 Hz`;
-    // Grid condition
+    document.getElementById('freqArc').innerHTML = svg;
+
+    // ── Numeric readout ───────────────────────────────────────
+    const valEl = document.getElementById('freqValueBig');
+    valEl.textContent = freq.toFixed(2);
+    valEl.className = `freq-value-big ${cls}`;
+
+    // ── Delta chip ────────────────────────────────────────────
+    const delta = freq - 50;
+    const sign = delta > 0.001 ? '+' : (delta < -0.001 ? '−' : '±');
+    const arrow = delta > 0.001 ? '▲' : (delta < -0.001 ? '▼' : '●');
+    const chip = document.getElementById('freqDeltaChip');
+    document.getElementById('freqDeltaText').textContent = `${sign}${Math.abs(delta).toFixed(3)} Hz`;
+    document.getElementById('freqDeltaArrow').textContent = arrow;
+    chip.className = `freq-delta-chip ${cls}`;
+
+    // ── Grid condition badge ──────────────────────────────────
     const gc = document.getElementById('gridCondition');
-    const dev = Math.abs(freq-50);
-    if(dev<0.15){gc.textContent='NORMAL';gc.className='grid-condition normal';}
-    else if(dev<0.3){gc.textContent='CONSERVATIVE OPS';gc.className='grid-condition conservative';}
-    else if(dev<0.5){gc.textContent='CONSERVATION ALERT';gc.className='grid-condition alert';}
-    else{gc.textContent='EMERGENCY';gc.className='grid-condition emergency';}
+    const labelEl = document.getElementById('gridConditionLabel');
+    const dev = Math.abs(delta);
+    if (dev < 0.15) { labelEl.textContent = 'NORMAL'; gc.className = 'grid-condition normal'; }
+    else if (dev < 0.3) { labelEl.textContent = 'CONSERVATIVE'; gc.className = 'grid-condition conservative'; }
+    else if (dev < 0.5) { labelEl.textContent = 'ALERT'; gc.className = 'grid-condition alert'; }
+    else { labelEl.textContent = 'EMERGENCY'; gc.className = 'grid-condition emergency'; }
 }
 
 function freqClass(f) { return Math.abs(f-50)<0.5?'normal':Math.abs(f-50)<1?'warning':'critical'; }
@@ -415,8 +496,8 @@ function initLeafletMap() {
     leafletMap = L.map(container, mapOpts);
     
     if (isKa) {
-        // Real map tiles for Karnataka tasks
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        // Real map tiles for Karnataka tasks (no labels — keeps the canvas clean)
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
             subdomains: 'abcd',
             maxZoom: 19,
         }).addTo(leafletMap);
@@ -436,9 +517,15 @@ function initLeafletMap() {
     
     // Fix Leaflet size after container is fully rendered
     setTimeout(() => {
+        if (!leafletMap) return;
         leafletMap.invalidateSize();
-        if (isKa) leafletMap.fitBounds(kaBounds, { padding: [20, 20] });
-    }, 200);
+        if (isKa) {
+            leafletMap.fitBounds(kaBounds, { padding: [20, 20] });
+        } else {
+            mapFitted = false;
+            updateGridMap();
+        }
+    }, 250);
 }
 
 function updateGridMap() {
@@ -450,7 +537,7 @@ function updateGridMap() {
     mapLayers.badges.clearLayers();
 
     const typeIcons = {slack:'S',generator:'G',load:'L',battery:'B',solar:'PV',wind:'W'};
-    const typeColors = {slack:'#00e5a0',generator:'#f5a623',load:'#e94560',battery:'#4a90d9',solar:'#ffeb3b',wind:'#64ffda'};
+    const typeColors = {slack:'#00e5a0',generator:'#f5a623',load:'#e94560',battery:'#e2e8f0',solar:'#ffeb3b',wind:'#64ffda'};
 
     // Collect buses — merge static config with runtime state
     let allBuses = [];
@@ -472,11 +559,17 @@ function updateGridMap() {
     
     // For non-GPS tasks, generate fake positions around Karnataka center
     const busPositions = {};
-    const zones = [
+    const isKaMap = isKarnatakaTask(state.task);
+    const zones = isKaMap ? [
         {id:0, lat:16.8, lon:76.8, color:AGENT_COLORS[0], label:'Kalaburagi'},
         {id:1, lat:15.2, lon:75.2, color:AGENT_COLORS[1], label:'Hubballi'},
         {id:2, lat:12.8, lon:75.5, color:AGENT_COLORS[2], label:'Mysuru'},
         {id:3, lat:13.2, lon:77.5, color:AGENT_COLORS[3], label:'Bengaluru'},
+    ] : [
+        {id:0, lat:17, lon:74, color:AGENT_COLORS[0], label:'Zone Alpha'},
+        {id:1, lat:17, lon:78, color:AGENT_COLORS[1], label:'Zone Beta'},
+        {id:2, lat:13, lon:74, color:AGENT_COLORS[2], label:'Zone Gamma'},
+        {id:3, lat:13, lon:78, color:AGENT_COLORS[3], label:'Zone Delta'},
     ];
 
     allBuses.forEach((b, idx) => {
@@ -491,11 +584,20 @@ function updateGridMap() {
             const zBuses = allBuses.filter(bb => findAgent(bb.id) === aid);
             const zi = zBuses.indexOf(b);
             const a = (zi / Math.max(zBuses.length, 1)) * Math.PI * 2;
-            lat = zd.lat + Math.cos(a) * 0.3;
-            lon = zd.lon + Math.sin(a) * 0.3;
+            const radius = isKaMap ? 0.3 : 1.2; // Spread out more for procedural grids
+            lat = zd.lat + Math.cos(a) * radius;
+            lon = zd.lon + Math.sin(a) * radius;
         }
         busPositions[b.id] = {lat, lon, bus: b, agent: aid};
     });
+
+    // Pre-build a map of line connections from task configuration
+    const lineConfigMap = {};
+    if (taskCfg && taskCfg.lines) {
+        taskCfg.lines.forEach(l => {
+            lineConfigMap[l.id] = { from: l.from, to: l.to };
+        });
+    }
 
     // Draw transmission lines
     const drawnLines = new Set();
@@ -503,9 +605,18 @@ function updateGridMap() {
         (obs.internal_lines||[]).concat(obs.boundary_lines||[]).forEach(l => {
             if (drawnLines.has(l.id)) return;
             drawnLines.add(l.id);
-            const parts = l.id.replace('L_','').split('_');
-            const fromId = parseInt(parts[0]);
-            const toId = parseInt(parts[1]);
+            
+            let fromId, toId;
+            if (lineConfigMap[l.id]) {
+                fromId = lineConfigMap[l.id].from;
+                toId = lineConfigMap[l.id].to;
+            } else {
+                // Fallback for older grids with L_{from}_{to} naming
+                const parts = l.id.replace('L_','').split('_');
+                fromId = parseInt(parts[0]);
+                toId = parseInt(parts[1]);
+            }
+            
             const from = busPositions[fromId];
             const to = busPositions[toId];
             if (!from || !to) return;
@@ -532,15 +643,15 @@ function updateGridMap() {
                 permanent: false, className: 'leaflet-tooltip-dark', direction: 'center'
             });
 
-            // Permanent label for high-flow lines
-            if (l.connected && Math.abs(l.flow) > 10) {
+            // Permanent label only for *high* flow (declutter)
+            if (l.connected && Math.abs(l.flow) > 55) {
                 const midLat = (from.lat + to.lat) / 2;
                 const midLon = (from.lon + to.lon) / 2;
                 const flowLabel = L.divIcon({
                     className: 'line-flow-label',
-                    html: `<span style="color:${lc};text-shadow:0 0 4px #000,0 0 8px #000;font-size:9px;font-family:'JetBrains Mono',monospace;font-weight:600;white-space:nowrap;">${Math.abs(l.flow).toFixed(0)}MW</span>`,
-                    iconSize: [40, 12],
-                    iconAnchor: [20, 6],
+                    html: `<span class="line-flow-pill" style="--flow-color:${lc}">${Math.abs(l.flow).toFixed(0)}<small>MW</small></span>`,
+                    iconSize: [44, 14],
+                    iconAnchor: [22, 7],
                 });
                 L.marker([midLat, midLon], { icon: flowLabel, interactive: false }).addTo(mapLayers.lines);
             }
@@ -558,7 +669,7 @@ function updateGridMap() {
         const b = pos.bus;
         const col = AGENT_COLORS[pos.agent] || '#4a5568';
         const fill = typeColors[b.type] || '#666';
-        const r = b.type === 'slack' ? 12 : b.type === 'load' ? 7 : 9;
+        const r = b.type === 'slack' ? 10 : b.type === 'load' ? 6 : 8;
         const inj = (b.p_injection !== undefined ? b.p_injection : 0);
         const busLabel = b.name || `${b.type} ${b.id}`;
         const icon = typeIcons[b.type] || '?';
@@ -587,39 +698,39 @@ function updateGridMap() {
         marker.bindTooltip(tooltipHtml, { className: 'leaflet-tooltip-dark', direction: 'top', offset: [0, -r] });
         mapLayers.nodes.addLayer(marker);
 
-        // Label under node
-        const labelIcon = L.divIcon({
-            className: 'bus-label-icon',
-            html: `<span style="color:${fill};text-shadow:0 0 4px #000;font-size:9px;font-family:'JetBrains Mono',monospace;white-space:nowrap;">${busLabel}</span>`,
-            iconSize: [80, 14],
-            iconAnchor: [40, -r - 2],
-        });
-        L.marker([pos.lat, pos.lon], { icon: labelIcon, interactive: false }).addTo(mapLayers.nodes);
-
-        // MW label above node
-        const mwIcon = L.divIcon({
-            className: 'bus-mw-icon',
-            html: `<span style="color:#e0e0e0;text-shadow:0 0 4px #000;font-size:10px;font-weight:700;font-family:'JetBrains Mono',monospace;">${inj.toFixed(0)}</span>`,
-            iconSize: [40, 14],
-            iconAnchor: [20, r + 16],
-        });
-        L.marker([pos.lat, pos.lon], { icon: mwIcon, interactive: false }).addTo(mapLayers.nodes);
+        // Bus name label hidden by default — visible on hover via tooltip.
+        // Only show MW pill for buses with non-trivial injection (declutter)
+        if (Math.abs(inj) >= 45) {
+            const sign = inj > 0 ? '+' : (inj < 0 ? '−' : '');
+            const cls = inj > 0 ? 'pos' : (inj < 0 ? 'neg' : 'zero');
+            const mwIcon = L.divIcon({
+                className: 'bus-mw-icon',
+                html: `<span class="bus-mw-pill ${cls}">${sign}${Math.abs(inj).toFixed(0)}<small>MW</small></span>`,
+                iconSize: [50, 16],
+                iconAnchor: [25, -r - 4],
+            });
+            L.marker([pos.lat, pos.lon], { icon: mwIcon, interactive: false }).addTo(mapLayers.nodes);
+        }
     }
 
-    // Zone badge overlays
+    // Zone badges — compact pills floating above each region cluster
     zones.slice(0, state.numAgents).forEach(z => {
         const zi = state.zoneInfo[String(z.id)] || {};
-        const name = zi.zone_name || z.label || AGENT_NAMES[z.id];
+        const rawName = zi.zone_name || z.label || AGENT_NAMES[z.id] || '';
+        const name = rawName.replace(/_Region$/i, '').replace(/_/g, ' ');
         const cum = (state.perAgentRewards[z.id] || []).reduce((a, b) => a + b, 0);
-        
+        const cumStr = (cum >= 0 ? '+' : '') + cum.toFixed(1);
+        const cumCls = cum > 0.5 ? 'pos' : cum < -0.5 ? 'neg' : 'neutral';
+
         const badgeIcon = L.divIcon({
             className: 'zone-badge-leaflet',
-            html: `<div style="background:rgba(10,14,26,0.85);border:1px solid ${z.color};border-radius:6px;padding:4px 10px;text-align:center;white-space:nowrap;">
-                <div style="color:${z.color};font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;">${name}</div>
-                <div style="color:${z.color};font-size:10px;font-family:'JetBrains Mono',monospace;opacity:0.8">${cum.toFixed(1)} pts</div>
+            html: `<div class="zone-pill" style="--zc:${z.color}">
+                <span class="zone-pill-bar"></span>
+                <span class="zone-pill-name">${name}</span>
+                <span class="zone-pill-pts ${cumCls}">${cumStr}</span>
             </div>`,
-            iconSize: [120, 36],
-            iconAnchor: [60, 50],
+            iconSize: [130, 22],
+            iconAnchor: [65, 60],
         });
         L.marker([z.lat, z.lon], { icon: badgeIcon, interactive: false }).addTo(mapLayers.badges);
     });
@@ -635,6 +746,21 @@ function updateGridMap() {
             ]);
             mapFitted = true;
         }
+    }
+
+    // Populate agent legend
+    const legendContainer = document.getElementById('agentLegendContainer');
+    if (legendContainer && state.numAgents > 0) {
+        legendContainer.style.display = 'block';
+        let legendHtml = `<div class="legend-title" style="margin-top:2px;">Zones / Agents</div>`;
+        for (let i = 0; i < state.numAgents; i++) {
+            const zi = state.zoneInfo[String(i)] || {};
+            const name = zi.zone_name || AGENT_NAMES[i];
+            legendHtml += `<div class="legend-item"><span class="legend-dot" style="background:${AGENT_COLORS[i]};"></span> ${name}</div>`;
+        }
+        legendContainer.innerHTML = legendHtml;
+    } else if (legendContainer) {
+        legendContainer.style.display = 'none';
     }
 }
 
@@ -670,68 +796,236 @@ function drawSparkline(id, data, color) {
 }
 
 function updateCharts() {
-    // Reward chart
-    drawChart('rewardChart', state.rewardHistory, 'var(--chart-reward)', 'Reward');
-    // Frequency chart
-    drawChart('freqChart', state.freqHistory, 'var(--chart-supply)', 'Hz', 49, 51);
+    drawChart('rewardChart', state.rewardHistory, '#ffd700', 'Reward');
+    drawChart('freqChart', state.freqHistory, '#00e5a0', 'Hz', 49, 51);
+    updateGenMix();
+}
+
+// ── Smooth Catmull–Rom → Bezier path generator ────────────────
+function smoothPath(points) {
+    if (points.length < 2) return '';
+    if (points.length === 2) return `M${points[0][0]},${points[0][1]} L${points[1][0]},${points[1][1]}`;
+    let d = `M${points[0][0]},${points[0][1]}`;
+    for (let i = 0; i < points.length - 1; i++) {
+        const p0 = points[i - 1] || points[i];
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        const p3 = points[i + 2] || p2;
+        const tension = 0.18;
+        const c1x = p1[0] + (p2[0] - p0[0]) * tension;
+        const c1y = p1[1] + (p2[1] - p0[1]) * tension;
+        const c2x = p2[0] - (p3[0] - p1[0]) * tension;
+        const c2y = p2[1] - (p3[1] - p1[1]) * tension;
+        d += ` C${c1x.toFixed(2)},${c1y.toFixed(2)} ${c2x.toFixed(2)},${c2y.toFixed(2)} ${p2[0].toFixed(2)},${p2[1].toFixed(2)}`;
+    }
+    return d;
 }
 
 function drawChart(containerId, data, color, label, fixedMin, fixedMax) {
     const el = document.getElementById(containerId);
     if (!el) return;
-    const W = el.clientWidth||300, H = el.clientHeight||140;
-    if (!data.length) { el.innerHTML = `<svg viewBox="0 0 ${W} ${H}"><text x="${W/2}" y="${H/2}" text-anchor="middle" fill="var(--text-muted)" font-size="11">Waiting for data...</text></svg>`; return; }
-    const pad = {t:10,r:10,b:20,l:40};
-    const cw = W-pad.l-pad.r, ch = H-pad.t-pad.b;
-    const min = fixedMin !== undefined ? fixedMin : Math.min(...data);
-    const max = fixedMax !== undefined ? fixedMax : Math.max(...data);
-    const range = max-min||1;
-    const pts = data.map((v,i) => `${pad.l+(i/(data.length-1||1))*cw},${pad.t+ch-(((v-min)/range)*ch)}`).join(' ');
-    let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
-    // Grid lines
-    for(let i=0;i<=4;i++){const y=pad.t+ch*i/4;const v=(max-((max-min)*i/4)).toFixed(1);svg+=`<line x1="${pad.l}" y1="${y}" x2="${W-pad.r}" y2="${y}" stroke="rgba(255,255,255,0.05)"/><text x="${pad.l-4}" y="${y+3}" text-anchor="end" fill="var(--text-muted)" font-size="8" font-family="JetBrains Mono">${v}</text>`;}
-    svg += `<polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5"/>`;
-    // Fill area
-    const firstX = pad.l, lastX = pad.l+(data.length-1)/(data.length-1||1)*cw;
-    svg += `<polygon points="${pts} ${lastX},${pad.t+ch} ${firstX},${pad.t+ch}" fill="${color}" opacity="0.08"/>`;
+    const W = el.clientWidth || 300, H = el.clientHeight || 140;
+
+    if (!data.length) {
+        el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+            <text x="${W/2}" y="${H/2}" text-anchor="middle" fill="var(--text-muted)" font-size="11" font-family="Inter, sans-serif">Waiting for data…</text>
+        </svg>`;
+        return;
+    }
+
+    const pad = {t: 14, r: 24, b: 22, l: 38};
+    const cw = W - pad.l - pad.r;
+    const ch = H - pad.t - pad.b;
+
+    // Y range — auto with sensible padding, or fixed
+    let min, max;
+    if (fixedMin !== undefined) {
+        min = fixedMin; max = fixedMax;
+    } else {
+        const dmin = Math.min(...data), dmax = Math.max(...data);
+        const dr = (dmax - dmin) || 1;
+        min = dmin - dr * 0.12;
+        max = dmax + dr * 0.12;
+    }
+    const range = (max - min) || 1;
+
+    const xOf = i => pad.l + (i / (data.length - 1 || 1)) * cw;
+    const yOf = v => pad.t + ch - ((v - min) / range) * ch;
+    const points = data.map((v, i) => [xOf(i), yOf(v)]);
+
+    const last = data[data.length - 1];
+    const lastX = points[points.length - 1][0];
+    const lastY = points[points.length - 1][1];
+
+    const isFreq = containerId === 'freqChart';
+    const isReward = containerId === 'rewardChart';
+
+    const gradId = `${containerId}-grad`;
+    const glowId = `${containerId}-glow`;
+
+    let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" class="chart-svg">`;
+
+    svg += `<defs>
+        <linearGradient id="${gradId}" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="${color}" stop-opacity="0.35"/>
+            <stop offset="60%" stop-color="${color}" stop-opacity="0.08"/>
+            <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
+        </linearGradient>
+        <filter id="${glowId}" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="2" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <clipPath id="${containerId}-clip">
+            <rect x="${pad.l}" y="${pad.t}" width="${cw}" height="${ch}"/>
+        </clipPath>
+    </defs>`;
+
+    // Plot area background
+    svg += `<rect x="${pad.l}" y="${pad.t}" width="${cw}" height="${ch}" fill="rgba(255,255,255,0.015)" rx="3"/>`;
+
+    // Frequency safe-zone shading
+    if (isFreq) {
+        const safeLo = 49.85, safeHi = 50.15;
+        const warnLo = 49.5, warnHi = 50.5;
+        if (warnLo > min && warnHi < max) {
+            svg += `<rect x="${pad.l}" y="${yOf(warnHi)}" width="${cw}" height="${yOf(warnLo) - yOf(warnHi)}" fill="rgba(255,215,0,0.04)"/>`;
+        }
+        if (safeLo > min && safeHi < max) {
+            svg += `<rect x="${pad.l}" y="${yOf(safeHi)}" width="${cw}" height="${yOf(safeLo) - yOf(safeHi)}" fill="rgba(0,229,160,0.06)"/>`;
+        }
+    }
+
+    // Horizontal grid lines + Y labels
+    const ySteps = 4;
+    for (let i = 0; i <= ySteps; i++) {
+        const y = pad.t + (ch * i) / ySteps;
+        const v = max - (range * i) / ySteps;
+        const isEdge = i === 0 || i === ySteps;
+        svg += `<line x1="${pad.l}" y1="${y}" x2="${W - pad.r}" y2="${y}" stroke="rgba(255,255,255,${isEdge ? 0.08 : 0.04})" stroke-width="1" stroke-dasharray="${isEdge ? '' : '2,4'}"/>`;
+        svg += `<text x="${pad.l - 6}" y="${y + 3}" text-anchor="end" fill="var(--text-muted)" font-size="9" font-family="JetBrains Mono, monospace" font-weight="500">${v.toFixed(isFreq ? 1 : 2)}</text>`;
+    }
+
+    // Nominal line for frequency
+    if (isFreq && 50 > min && 50 < max) {
+        const y50 = yOf(50);
+        svg += `<line x1="${pad.l}" y1="${y50}" x2="${W - pad.r}" y2="${y50}" stroke="rgba(0,229,160,0.35)" stroke-width="1" stroke-dasharray="3,3"/>`;
+        svg += `<text x="${W - pad.r + 3}" y="${y50 + 3}" fill="rgba(0,229,160,0.6)" font-size="8" font-family="JetBrains Mono, monospace" font-weight="600">50</text>`;
+    }
+
+    // Zero line for reward
+    if (isReward && 0 > min && 0 < max) {
+        const y0 = yOf(0);
+        svg += `<line x1="${pad.l}" y1="${y0}" x2="${W - pad.r}" y2="${y0}" stroke="rgba(255,255,255,0.18)" stroke-width="1" stroke-dasharray="3,3"/>`;
+    }
+
+    // X axis labels (step indices)
+    const xLabels = Math.min(5, data.length);
+    for (let i = 0; i < xLabels; i++) {
+        const di = Math.round((i / (xLabels - 1 || 1)) * (data.length - 1));
+        const x = xOf(di);
+        svg += `<text x="${x}" y="${H - 6}" text-anchor="middle" fill="var(--text-muted)" font-size="9" font-family="JetBrains Mono, monospace">${di}</text>`;
+    }
+
+    // Smooth area fill
+    const linePath = smoothPath(points);
+    svg += `<path d="${linePath} L${lastX},${pad.t + ch} L${pad.l},${pad.t + ch} Z" fill="url(#${gradId})" clip-path="url(#${containerId}-clip)"/>`;
+
+    // Smooth line
+    svg += `<path d="${linePath}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" filter="url(#${glowId})"/>`;
+
+    // Last-point marker + value badge
+    svg += `<circle cx="${lastX}" cy="${lastY}" r="3.5" fill="${color}" stroke="#0a0a0a" stroke-width="1.5"/>`;
+    svg += `<circle cx="${lastX}" cy="${lastY}" r="6" fill="${color}" opacity="0.25"/>`;
+    const badgeText = isFreq ? `${last.toFixed(2)}` : last.toFixed(2);
+    const badgeW = badgeText.length * 6 + 10;
+    let bx = lastX + 8;
+    if (bx + badgeW > W - 2) bx = lastX - badgeW - 8;
+    svg += `<rect x="${bx}" y="${lastY - 8}" width="${badgeW}" height="16" rx="3" fill="${color}" opacity="0.95"/>`;
+    svg += `<text x="${bx + badgeW/2}" y="${lastY + 3}" text-anchor="middle" fill="#0a0a0a" font-size="9" font-family="JetBrains Mono, monospace" font-weight="700">${badgeText}</text>`;
+
     svg += '</svg>';
     el.innerHTML = svg;
-    // Gen mix chart
-    if (containerId === 'freqChart') updateGenMix();
 }
 
 function updateGenMix() {
     const el = document.getElementById('genMixChart');
     if (!el) return;
-    const W = el.clientWidth||200, H = el.clientHeight||140;
-    let types = {};
+    const W = el.clientWidth || 300, H = el.clientHeight || 140;
+
+    const types = {};
     for (const obs of Object.values(state.observations)) {
-        (obs.local_buses||[]).forEach(b => {
-            if (b.p_injection > 0) types[b.type] = (types[b.type]||0) + b.p_injection;
+        (obs.local_buses || []).forEach(b => {
+            if (b.p_injection > 0) types[b.type] = (types[b.type] || 0) + b.p_injection;
         });
     }
-    const total = Object.values(types).reduce((a,b)=>a+b,0) || 1;
-    const colors = {slack:'#00e5a0',generator:'#f5a623',solar:'#ffeb3b',wind:'#64ffda',battery:'#4a90d9'};
-    let svg = `<svg viewBox="0 0 ${W} ${H}">`;
-    const cx=W/2, cy=H/2-5, r=Math.min(W,H)*0.3;
-    let startAngle = -Math.PI/2;
-    for (const [type, val] of Object.entries(types)) {
-        const pct = val/total;
-        const endAngle = startAngle + pct * Math.PI*2;
-        const x1=cx+r*Math.cos(startAngle), y1=cy+r*Math.sin(startAngle);
-        const x2=cx+r*Math.cos(endAngle), y2=cy+r*Math.sin(endAngle);
-        const large = pct > 0.5 ? 1 : 0;
-        svg += `<path d="M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} Z" fill="${colors[type]||'#666'}" opacity="0.8"/>`;
-        const mid = (startAngle+endAngle)/2;
-        if (pct > 0.08) {
-            const lx=cx+(r+14)*Math.cos(mid), ly=cy+(r+14)*Math.sin(mid);
-            svg += `<text x="${lx}" y="${ly}" text-anchor="middle" fill="var(--text-secondary)" font-size="8">${type} ${(pct*100).toFixed(0)}%</text>`;
-        }
-        startAngle = endAngle;
+    const entries = Object.entries(types).sort((a, b) => b[1] - a[1]);
+    const total = entries.reduce((s, [, v]) => s + v, 0);
+
+    if (total <= 0) {
+        el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+            <text x="${W/2}" y="${H/2}" text-anchor="middle" fill="var(--text-muted)" font-size="11" font-family="Inter, sans-serif">No generation yet</text>
+        </svg>`;
+        return;
     }
-    svg += `<circle cx="${cx}" cy="${cy}" r="${r*0.55}" fill="var(--bg-card)"/>`;
-    svg += `<text x="${cx}" y="${cy-2}" text-anchor="middle" fill="var(--text-primary)" font-family="JetBrains Mono" font-size="14" font-weight="700">${total.toFixed(0)}</text>`;
-    svg += `<text x="${cx}" y="${cy+10}" text-anchor="middle" fill="var(--text-muted)" font-size="8">MW</text>`;
+
+    const colors = {
+        slack: '#00e5a0', generator: '#f5a623', solar: '#ffeb3b',
+        wind: '#64ffda', battery: '#9aa6b2',
+    };
+    const labels = {
+        slack: 'Slack', generator: 'Gen', solar: 'Solar',
+        wind: 'Wind', battery: 'Battery',
+    };
+
+    const donutSize = Math.min(H - 16, W * 0.55, 130);
+    const cx = donutSize / 2 + 12;
+    const cy = H / 2;
+    const rOuter = donutSize / 2;
+    const rInner = rOuter * 0.62;
+    const gap = 0.012;
+
+    let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" class="chart-svg">`;
+    svg += `<defs>
+        <filter id="genmix-glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="1.5" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+    </defs>`;
+
+    // Track ring
+    svg += `<circle cx="${cx}" cy="${cy}" r="${(rOuter + rInner) / 2}" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="${rOuter - rInner}"/>`;
+
+    let startA = -Math.PI / 2;
+    entries.forEach(([type, val]) => {
+        const pct = val / total;
+        const sweep = pct * Math.PI * 2;
+        const aStart = startA + (entries.length > 1 ? gap / 2 : 0);
+        const aEnd = startA + sweep - (entries.length > 1 ? gap / 2 : 0);
+        if (aEnd <= aStart) { startA += sweep; return; }
+        const rMid = (rOuter + rInner) / 2;
+        const x1 = cx + rMid * Math.cos(aStart), y1 = cy + rMid * Math.sin(aStart);
+        const x2 = cx + rMid * Math.cos(aEnd), y2 = cy + rMid * Math.sin(aEnd);
+        const large = (aEnd - aStart) > Math.PI ? 1 : 0;
+        svg += `<path d="M${x1},${y1} A${rMid},${rMid} 0 ${large},1 ${x2},${y2}" fill="none" stroke="${colors[type] || '#666'}" stroke-width="${rOuter - rInner}" stroke-linecap="butt" opacity="0.92"/>`;
+        startA += sweep;
+    });
+
+    // Center readout
+    svg += `<text x="${cx}" y="${cy - 4}" text-anchor="middle" fill="var(--text-primary)" font-family="JetBrains Mono, monospace" font-size="18" font-weight="700">${total.toFixed(0)}</text>`;
+    svg += `<text x="${cx}" y="${cy + 11}" text-anchor="middle" fill="var(--text-muted)" font-size="9" font-family="JetBrains Mono, monospace" letter-spacing="1.5">MW</text>`;
+
+    // Legend on the right
+    const legendX = donutSize + 28;
+    const lineH = 16;
+    const legendStart = cy - (entries.length * lineH) / 2 + 4;
+    entries.forEach(([type, val], i) => {
+        const pct = (val / total) * 100;
+        const ly = legendStart + i * lineH;
+        svg += `<rect x="${legendX}" y="${ly - 7}" width="9" height="9" rx="2" fill="${colors[type] || '#666'}"/>`;
+        svg += `<text x="${legendX + 14}" y="${ly}" fill="var(--text-secondary)" font-size="10" font-family="Inter, sans-serif" font-weight="500">${labels[type] || type}</text>`;
+        svg += `<text x="${W - 6}" y="${ly}" text-anchor="end" fill="var(--text-primary)" font-size="10" font-family="JetBrains Mono, monospace" font-weight="600">${pct.toFixed(0)}%</text>`;
+    });
+
     svg += '</svg>';
     el.innerHTML = svg;
 }

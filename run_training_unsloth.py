@@ -1,7 +1,16 @@
-"""OpenGrid GRPO Training Runner for HF Spaces.
+"""OpenGrid GRPO Training Runner — Unsloth variant.
 
-Runs env-grounded GRPO training, saves model + plots,
-then starts a FastAPI server to serve/download results.
+This is the Unsloth-accelerated version of run_training.py. It uses
+unsloth.FastLanguageModel for ~2x faster training and lower memory at
+the same configuration. Functionality is otherwise identical:
+env-grounded GRPO, baseline + post-training eval, plots, summary.json.
+
+Why two scripts?
+- run_training.py             : transformers + bitsandbytes + peft (used for the shipped run)
+- run_training_unsloth.py     : unsloth-accelerated path (alternative, faster GPU pipeline)
+
+Choose whichever stack works for your GPU/runtime. Both produce the same
+training/outputs/summary.json schema.
 """
 import os
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
@@ -31,21 +40,26 @@ except Exception as e:
     print(f"Error checking gcc: {e}")
 # ----------------------------
 
+
 # ── Training ──────────────────────────────────────────────────────
 def run_grpo_training():
-    """Run GRPO training with env-grounded rewards."""
+    """Run GRPO training with env-grounded rewards, accelerated by Unsloth."""
+    # IMPORTANT: Unsloth must be imported BEFORE transformers/trl to apply its patches.
+    from unsloth import FastLanguageModel, is_bfloat16_supported
+
     import torch
     import numpy as np
 
     print("=" * 60)
-    print("  OpenGrid GRPO Training")
+    print("  OpenGrid GRPO Training — Unsloth")
     print("=" * 60)
 
     if torch.cuda.is_available():
         print(f"GPU: {torch.cuda.get_device_name(0)}")
         print(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
     else:
-        print("WARNING: No GPU detected — training will be very slow!")
+        print("WARNING: No GPU detected — Unsloth requires CUDA. Aborting.")
+        raise RuntimeError("Unsloth requires a CUDA-capable GPU.")
 
     # Import project modules
     sys.path.insert(0, ".")
@@ -58,51 +72,45 @@ def run_grpo_training():
         rollout_multi_agent,
     )
 
-    # ── 1. Load model ──
-    print("\n[1/6] Loading model with bitsandbytes 4-bit...")
-    from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
-    from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+    # ── 1. Load model with Unsloth ──
+    print("\n[1/6] Loading model with Unsloth (4-bit)...")
 
-    # ── Iteration-budget config ── tweak these to trade speed vs quality ──
-    MODEL_NAME   = "Qwen/Qwen2.5-1.5B-Instruct"
-    LORA_RANK    = 8          # 8 → faster, less VRAM; 16 → more capacity
-    NUM_EPOCHS   = 1          # 1 epoch ≈ 50 min; 3 epochs ≈ 2.5 h
-    NUM_EPISODES = 4          # prompt generation episodes (×15 steps ×n_agents ≈ prompts)
-    SAVE_STEPS   = 25         # checkpoint every N steps so a late crash still saves progress
-    # ─────────────────────────────────────────────────────────────────────
+    # ── Iteration-budget config ── tweak to trade speed vs quality ──
+    MODEL_NAME    = "unsloth/Qwen2.5-1.5B-Instruct-bnb-4bit"  # pre-quantized for fast load
+    LORA_RANK     = 8       # 8 → faster, less VRAM; 16 → more capacity
+    NUM_EPOCHS    = 1       # 1 epoch ≈ 25-30 min on Unsloth (vs ~50 min on bnb)
+    NUM_EPISODES  = 4       # prompt generation episodes
+    SAVE_STEPS    = 25
+    MAX_SEQ_LEN   = 1024    # prompt+completion budget; Unsloth pre-allocates this
+    # ──────────────────────────────────────────────────────────────
 
-    bnb_config = BitsAndBytesConfig(
+    model, tokenizer = FastLanguageModel.from_pretrained(
+        model_name=MODEL_NAME,
+        max_seq_length=MAX_SEQ_LEN,
+        dtype=None,             # auto-detect bf16/fp16
         load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
-        bnb_4bit_use_double_quant=True,
     )
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    model = AutoModelForCausalLM.from_pretrained(
-        MODEL_NAME, quantization_config=bnb_config, device_map="auto",
-    )
-
-    # Critical for bnb-4bit + LoRA + gradient checkpointing: cast norms to fp32,
-    # enable input grads, and wire up non-reentrant checkpointing.
-    model = prepare_model_for_kbit_training(
+    # Unsloth's PEFT wrapper — handles all the bnb-4bit + LoRA + grad checkpointing
+    # plumbing internally, so no separate prepare_model_for_kbit_training step.
+    model = FastLanguageModel.get_peft_model(
         model,
-        use_gradient_checkpointing=True,
-        gradient_checkpointing_kwargs={"use_reentrant": False},
-    )
-    model.config.pad_token_id = tokenizer.pad_token_id
-    model.config.use_cache = False  # silences the warning loop during training
-
-    lora_config = LoraConfig(
-        r=LORA_RANK, lora_alpha=LORA_RANK * 2, lora_dropout=0.05,
+        r=LORA_RANK,
+        lora_alpha=LORA_RANK * 2,
+        lora_dropout=0.05,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
                         "gate_proj", "up_proj", "down_proj"],
-        task_type="CAUSAL_LM",
+        bias="none",
+        use_gradient_checkpointing="unsloth",  # Unsloth's optimized variant
+        random_state=42,
+        use_rslora=False,
+        loftq_config=None,
     )
-    model = get_peft_model(model, lora_config)
-    model.enable_input_require_grads()
+    model.config.pad_token_id = tokenizer.pad_token_id
+
     print(f"  Model: {MODEL_NAME}")
     print(f"  Trainable params: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
 
@@ -145,13 +153,12 @@ def run_grpo_training():
     obs_contexts = []
     rng = np.random.RandomState(base_seed)
 
-    for episode in range(NUM_EPISODES):  # NUM_EPISODES × 15 steps × n_agents ≈ prompts
+    for episode in range(NUM_EPISODES):
         ep_config = copy.deepcopy(task_config)
         ep_config['seed'] = base_seed + episode
         env = OpenGridEnv(ep_config)
         zone_obs = env.reset_multi()
 
-        # Adversarial: drain batteries every 5th episode
         if episode % 5 == 0:
             for b in env.bus_state:
                 b_cfg = env._find_bus_config(b['id'])
@@ -200,8 +207,8 @@ def run_grpo_training():
     import inspect as _inspect
     _grpo_params = set(_inspect.signature(GRPOConfig.__init__).parameters)
 
-    _bf16 = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
-    _fp16 = torch.cuda.is_available() and not _bf16
+    _bf16 = is_bfloat16_supported()
+    _fp16 = not _bf16
 
     def reward_fn(completions, obs_context=None, **kwargs):
         texts = []
@@ -227,8 +234,6 @@ def run_grpo_training():
 
         return compute_grpo_reward_env(texts, obs_dicts, task_config)
 
-    # Set generation config explicitly so EOS is always respected and
-    # generation never runs to max_completion_length every single time.
     from transformers import GenerationConfig
     model.generation_config = GenerationConfig(
         do_sample=True,
@@ -248,21 +253,20 @@ def run_grpo_training():
     if 'use_vllm'              in _grpo_params: _opt['use_vllm']              = False
 
     grpo_config = GRPOConfig(
-        output_dir="training/outputs/grpo_checkpoints",
+        output_dir="training/outputs/grpo_checkpoints_unsloth",
         num_train_epochs=NUM_EPOCHS,
         per_device_train_batch_size=4,
         gradient_accumulation_steps=4,
-        learning_rate=2e-5,               # slightly higher LR for fewer steps
+        learning_rate=2e-5,
         logging_steps=1,
-        save_steps=SAVE_STEPS,            # checkpoint often so late crashes don't lose everything
-        save_total_limit=3,               # keep only 3 checkpoints to save disk
+        save_steps=SAVE_STEPS,
+        save_total_limit=3,
         num_generations=4,
         report_to="none",
         remove_unused_columns=False,
         bf16=_bf16,
         fp16=_fp16,
-        gradient_checkpointing=True,
-        gradient_checkpointing_kwargs={"use_reentrant": False},
+        gradient_checkpointing=False,  # Unsloth handles this internally
         optim="paged_adamw_8bit",
         warmup_ratio=0.05,
         lr_scheduler_type="cosine",
@@ -274,13 +278,15 @@ def run_grpo_training():
     print(f"  Dataset: {len(train_dataset)} rows")
     print(f"  Effective batch: {grpo_config.per_device_train_batch_size * grpo_config.gradient_accumulation_steps}")
 
+    # Switch Unsloth into training mode (it has a separate inference fast-path)
+    FastLanguageModel.for_training(model)
+
     trainer = GRPOTrainer(
         model=model, args=grpo_config, train_dataset=train_dataset,
         reward_funcs=reward_fn, processing_class=tokenizer,
     )
 
-    # ── Sanity-check generation before handing off to GRPO ──
-    # If this hangs, the model/tokenizer setup is the problem.
+    # Sanity-check generation
     print("  [DEBUG] Testing model generation (should complete in <30s)...")
     _test_inputs = tokenizer("Hello", return_tensors="pt").to(model.device)
     with torch.no_grad():
@@ -293,29 +299,29 @@ def run_grpo_training():
         )
     print(f"  [DEBUG] Generation OK: {tokenizer.decode(_out[0][-8:], skip_special_tokens=True)!r}")
 
-    print("  [NOTE] First GRPO step includes Triton JIT — may show 0/N for up to 5 min. That is normal.")
+    print("  [NOTE] First GRPO step may include Triton JIT compilation. That is normal.")
     t0 = time.time()
     trainer.train()
     train_time = time.time() - t0
     print(f"\n  Training complete in {train_time/60:.1f} minutes")
 
-    # Save adapter only (avoids OOM from merging/dequantising the full model)
-    output_path = "training/outputs/trained_model"
+    # Save adapter only
+    output_path = "training/outputs/trained_model_unsloth"
     os.makedirs(output_path, exist_ok=True)
-    torch.cuda.empty_cache()              # free activations before saving
+    torch.cuda.empty_cache()
     try:
-        model.save_pretrained(output_path)    # saves LoRA adapter weights only
+        model.save_pretrained(output_path)
         tokenizer.save_pretrained(output_path)
         print(f"  Adapter saved to {output_path}")
     except Exception as save_err:
         print(f"  WARNING: adapter save failed ({save_err}); training metrics still captured")
 
     # ── 5. Post-training evaluation ──
-    # Only evaluate on 3 tasks × 1 episode to stay within VRAM budget.
-    # Full 6-task × 3-episode eval can be run offline if needed.
     print("\n[5/6] Evaluating trained model (fast: 3 tasks × 1 ep)...")
     torch.cuda.empty_cache()
-    model.eval()
+
+    # Switch Unsloth to inference mode for ~2x generation speed
+    FastLanguageModel.for_inference(model)
 
     def trained_generate(prompt):
         messages = [
@@ -326,7 +332,7 @@ def run_grpo_training():
         inputs = tokenizer(formatted, return_tensors="pt").to(model.device)
         with torch.no_grad():
             outputs = model.generate(
-                **inputs, max_new_tokens=64,   # short for speed; enough for JSON action
+                **inputs, max_new_tokens=64,
                 temperature=0.3, do_sample=True,
                 pad_token_id=tokenizer.pad_token_id,
                 eos_token_id=tokenizer.eos_token_id,
@@ -334,7 +340,7 @@ def run_grpo_training():
         return tokenizer.decode(outputs[0][inputs['input_ids'].shape[1]:], skip_special_tokens=True)
 
     trained_results = {}
-    EVAL_TASKS = ["task_easy", "task_karnataka", "karnataka_hard"]  # representative subset
+    EVAL_TASKS = ["task_easy", "task_karnataka", "karnataka_hard"]
     for task_id in EVAL_TASKS:
         if task_id not in TASKS:
             continue
@@ -369,9 +375,9 @@ def run_grpo_training():
         before = [baseline_results[t]['avg'] for t in common_tasks]
         after = [trained_results[t]['avg'] for t in common_tasks]
         ax.bar(x - width/2, before, width, label='Heuristic Baseline', color='#ff6b6b', alpha=0.8)
-        ax.bar(x + width/2, after, width, label='GRPO Trained', color='#00d4aa', alpha=0.8)
+        ax.bar(x + width/2, after, width, label='GRPO Trained (Unsloth)', color='#00d4aa', alpha=0.8)
         ax.set_xlabel('Task'); ax.set_ylabel('Average Episode Reward')
-        ax.set_title('OpenGrid — GRPO Training: Before vs After', fontweight='bold')
+        ax.set_title('OpenGrid — GRPO Training (Unsloth): Before vs After', fontweight='bold')
         ax.set_xticks(x); ax.set_xticklabels([t.replace('task_', '').title() for t in common_tasks])
         ax.legend(); ax.grid(True, alpha=0.3, axis='y')
         for bars in ax.containers:
@@ -380,7 +386,7 @@ def run_grpo_training():
                 ax.text(bar.get_x() + bar.get_width()/2., h + (1 if h >= 0 else -3),
                         f'{h:.1f}', ha='center', va='bottom' if h >= 0 else 'top', fontsize=10)
         plt.tight_layout()
-        plt.savefig('training/outputs/before_after.png', dpi=150)
+        plt.savefig('training/outputs/before_after_unsloth.png', dpi=150)
         plt.close()
 
     # Training loss
@@ -395,18 +401,18 @@ def run_grpo_training():
             smoothed = np.convolve(losses, np.ones(w)/w, mode='valid')
             ax.plot(steps[w-1:], smoothed, color='#ff6b6b', linewidth=2.5, label=f'Smoothed (w={w})')
         ax.set_xlabel('Step'); ax.set_ylabel('Loss')
-        ax.set_title('OpenGrid GRPO — Training Loss', fontweight='bold')
+        ax.set_title('OpenGrid GRPO (Unsloth) — Training Loss', fontweight='bold')
         ax.legend(); ax.grid(True, alpha=0.3)
         plt.tight_layout()
-        plt.savefig('training/outputs/training_loss.png', dpi=150)
+        plt.savefig('training/outputs/training_loss_unsloth.png', dpi=150)
         plt.close()
 
-    # Save summary — includes run config so multiple runs are comparable
-    # Also record trainer log history for the reward curve
+    # Save summary — same schema as the bnb run, with framework field updated
     log_history = trainer.state.log_history
     summary = {
         "model": MODEL_NAME,
         "train_task": TRAIN_TASK,
+        "framework": "Unsloth + TRL GRPOTrainer",
         "train_time_minutes": round(train_time / 60, 1),
         "num_prompts": len(prompts),
         "num_epochs": NUM_EPOCHS,
@@ -418,11 +424,11 @@ def run_grpo_training():
         "reward_start": round(float(np.mean([h['reward'] for h in log_history if 'reward' in h][:5])), 4) if log_history else None,
         "reward_end":   round(float(np.mean([h['reward'] for h in log_history if 'reward' in h][-20:])), 4) if log_history else None,
     }
-    with open("training/outputs/summary.json", "w") as f:
+    with open("training/outputs/summary_unsloth.json", "w") as f:
         json.dump(summary, f, indent=2)
 
     print("\n" + "=" * 60)
-    print("  TRAINING COMPLETE")
+    print("  TRAINING COMPLETE (Unsloth)")
     print("=" * 60)
     print(f"  Time: {train_time/60:.1f} minutes")
     print(f"  {'Task':<20} {'Baseline':>10} {'Trained':>10} {'Δ':>8}")
@@ -443,15 +449,10 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\nERROR during training: {e}")
         traceback.print_exc()
-        # Save error so the UI can report it
         os.makedirs("training/outputs", exist_ok=True)
-        with open("training/outputs/summary.json", "w") as f:
+        with open("training/outputs/summary_unsloth.json", "w") as f:
             json.dump({"error": str(e)}, f)
 
-    # Start the full UI server (not a mini results server)
-    # This serves the control room + training results on port 7860
-    # NOTE: In training mode, entrypoint.sh starts the server in background
-    # before training. This block is kept for standalone execution only.
     if os.environ.get("OPENGRID_MODE") != "training":
         print("\nTraining done. Starting full UI server on port 7860...")
         import uvicorn
@@ -459,4 +460,3 @@ if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=7860)
     else:
         print("\nTraining done. UI server already running in background.")
-

@@ -1,0 +1,46 @@
+{
+  "model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "train_task": "task_karnataka",
+  "train_time_minutes": 159.6,
+  "num_prompts": 600,
+  "num_epochs": 3,
+  "num_steps": 449,
+  "gpu": "NVIDIA A10G (23.9 GB)",
+  "lora_rank": 16,
+  "framework": "TRL GRPOTrainer + bitsandbytes 4-bit",
+  "reward_start": -0.2308,
+  "reward_end": 0.6638,
+  "reward_peak": 0.6883,
+  "note": "Post-training eval OOM'd during model save; reward values from training log",
+  "baseline": {
+    "task_easy": {
+      "avg": 31.99,
+      "std": 0.0
+    },
+    "task_medium": {
+      "avg": 46.69,
+      "std": 0.36
+    },
+    "karnataka_easy": {
+      "avg": 56.33,
+      "std": 0.25
+    },
+    "karnataka_medium": {
+      "avg": 49.57,
+      "std": 0.21
+    },
+    "karnataka_hard": {
+      "avg": -417.15,
+      "std": 63.02
+    },
+    "task_karnataka": {
+      "avg": 49.43,
+      "std": 0.21
+    }
+  },
+  "training_reward": {
+    "initial_avg_5steps": -0.2308,
+    "mid_avg_steps100_150": 0.6266,
+    "final_avg_last50steps": 0.6634
+  }
+}

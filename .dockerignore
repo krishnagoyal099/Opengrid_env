@@ -20,8 +20,15 @@ inference_output.txt
 codebase_summary.md
 uv.lock
 
-# Training outputs (not needed in Docker image)
-training/outputs/
+# Training outputs — ignore everything except the small evidence artifacts
+# served by /training-results and /training-plots/{name} on the HF Space.
+training/outputs/*
+training/outputs/**/*
+!training/outputs/summary.json
+!training/outputs/summary_unsloth.json
+!training/outputs/training_reward_curve.png
+!training/outputs/training_loss.png
+!training/outputs/before_after.png
 *.safetensors
 *.bin
 

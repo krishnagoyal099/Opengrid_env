@@ -527,6 +527,15 @@ def train_grpo(args):
 
         return compute_grpo_reward_env(texts, obs_dicts, task_config, horizon=1)
 
+    # Some GRPOConfig params were renamed/moved between TRL versions; only pass
+    # what this installed TRL accepts.
+    _opt = {}
+    if 'max_prompt_length'     in _grpo_params: _opt['max_prompt_length']     = 1024
+    if 'max_completion_length' in _grpo_params: _opt['max_completion_length'] = 96
+    if 'temperature'           in _grpo_params: _opt['temperature']           = 0.7
+    if 'torch_compile'         in _grpo_params: _opt['torch_compile']         = False
+    if 'use_vllm'              in _grpo_params: _opt['use_vllm']              = False
+
     # GRPO Config — tuned for sustained learning signal AND visible progress
     grpo_config = GRPOConfig(
         output_dir=str(Path(args.output_dir) / "grpo_checkpoints"),
@@ -536,10 +545,7 @@ def train_grpo(args):
         learning_rate=1e-5,
         logging_steps=1,
         save_steps=50,
-        max_prompt_length=1024,
-        max_completion_length=96,
         num_generations=4,
-        temperature=0.7,
         report_to="none",
         remove_unused_columns=False,
         gradient_checkpointing=True,
@@ -547,8 +553,7 @@ def train_grpo(args):
         optim="paged_adamw_8bit",
         warmup_ratio=0.05,
         lr_scheduler_type="cosine",
-        **({'torch_compile': False} if 'torch_compile' in _grpo_params else {}),
-        **({'use_vllm': False} if 'use_vllm' in _grpo_params else {}),
+        **_opt,
     )
 
     # Create dataset — include obs_context so TRL passes it to reward_fn

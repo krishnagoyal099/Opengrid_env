@@ -1,0 +1,29 @@
+# Training deps — Unsloth-accelerated path (alternative to requirements-training.txt)
+# Use this when running run_training_unsloth.py or opengrid_grpo_colab_unsloth.ipynb.
+#
+# Unsloth pins specific versions of transformers/trl/peft for compatibility.
+# Pip will resolve the exact pins from the unsloth release.
+
+unsloth                         # 4-bit + LoRA + Triton-fused kernels
+unsloth_zoo                     # auxiliary kernels Unsloth requires
+trl>=0.12.0,<0.16
+xformers                        # required by Unsloth for memory-efficient attention
+triton                          # transitive, but pin explicit so Colab installs the right version
+
+# Standard Hugging Face stack (Unsloth pulls compatible versions, listed for clarity)
+transformers
+peft
+accelerate
+datasets
+bitsandbytes
+torchvision
+hf_transfer
+
+# Shared with environment
+fastapi
+uvicorn[standard]
+pydantic>=2.0
+numpy
+networkx
+matplotlib
+httpx

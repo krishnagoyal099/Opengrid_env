@@ -21,8 +21,15 @@ docs/detailed_judging_criteria.md
 docs/project-spec.md
 pyrightconfig.json
 
-# Training outputs (large files — push separately or add to HF)
-training/outputs/
+# Training outputs — ignore everything by default…
+training/outputs/*
+training/outputs/**/*
+# …but keep the small evidence artifacts the README and HF Space rely on
+!training/outputs/summary.json
+!training/outputs/summary_unsloth.json
+!training/outputs/training_reward_curve.png
+!training/outputs/training_loss.png
+!training/outputs/before_after.png
 *.safetensors
 *.bin
 
