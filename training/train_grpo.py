@@ -248,26 +248,21 @@ def compute_grpo_reward_env(
     completions: list,
     observations: list,
     task_config: dict,
-    horizon: int = 3,
+    horizon: int = 1,
 ) -> list:
-    """Environment-grounded reward: step the actual physics simulation.
+    """Fast multi-signal reward for GRPO — no env simulation to avoid hangs.
 
-    For each LLM-generated action:
-    1. Restore the env to the observation state
-    2. Step with the proposed action and get the real reward
-    3. Run a short rollout (horizon steps) with heuristic continuation
-       to capture trajectory-level impact
-    4. Add format/schema bonuses
-
-    This directly addresses the proxy-reward disconnect that caused
-    the original GRPO training to show zero improvement.
+    Signals (ordered by discriminative power):
+      1. JSON validity   : -0.5 (invalid) vs 0 (valid) — creates hard cliff
+      2. Schema check    : +0.1 for correct bus_id types and non-empty adjustments
+      3. Direction       : ±0.4 based on whether delta corrects frequency error
+      4. Proportionality : ±0.2 based on magnitude relative to freq error
+      5. Stability bonus : +0.1 for small action when grid is already stable
     """
-    from src.baseline import heuristic_policy
-
     global _REWARD_CALL_COUNT
     _REWARD_CALL_COUNT += 1
-    if _REWARD_CALL_COUNT <= 3 or _REWARD_CALL_COUNT % 50 == 0:
-        print(f"  [reward_fn] call #{_REWARD_CALL_COUNT} | n_completions={len(completions)}", flush=True)
+    if _REWARD_CALL_COUNT <= 5 or _REWARD_CALL_COUNT % 100 == 0:
+        print(f"  [reward_fn] call #{_REWARD_CALL_COUNT} | n={len(completions)}", flush=True)
 
     rewards = []
     for completion, obs_dict in zip(completions, observations):
@@ -275,7 +270,6 @@ def compute_grpo_reward_env(
             rewards.append(0.0)
             continue
 
-        # Deserialize if needed (TRL may pass strings)
         if isinstance(obs_dict, str):
             try:
                 obs_dict = json.loads(obs_dict)
@@ -285,77 +279,58 @@ def compute_grpo_reward_env(
 
         freq = obs_dict.get('grid_frequency', 50.0)
         freq_error = freq - 50.0
+        abs_error = abs(freq_error)
 
-        # ── 1. JSON validity signal — biggest discriminator ──
-        # Raw text check first (faster than extract_action)
-        raw_has_json = '{' in completion and '}' in completion
+        # ── 1. JSON validity ──
         try:
-            import re as _re
-            _m = _re.search(r'\{[\s\S]*\}', completion)
+            _m = re.search(r'\{[\s\S]*\}', completion)
             _parsed = json.loads(_m.group()) if _m else None
-            json_valid = _parsed is not None and 'bus_adjustments' in _parsed
+            json_valid = (
+                _parsed is not None
+                and isinstance(_parsed.get('bus_adjustments'), list)
+            )
         except Exception:
             json_valid = False
 
         if not json_valid:
-            # Invalid / missing JSON — strong penalty so the group has variance
             rewards.append(-0.5)
             continue
 
-        action = extract_action(completion)
-        has_adjustments = bool(action.bus_adjustments)
+        # ── 2. Schema / action quality ──
+        adjustments = _parsed.get('bus_adjustments', [])
+        schema_score = 0.0
+        valid_adjs = []
+        for adj in adjustments:
+            if isinstance(adj.get('bus_id'), int) and isinstance(adj.get('delta'), (int, float)):
+                valid_adjs.append(adj)
+        if valid_adjs:
+            schema_score = 0.1
+        elif abs_error > 0.05:
+            schema_score = -0.1  # should have acted but gave no valid adjustments
 
-        # ── 2. Format reward — directional correctness ──
-        format_score = 0.0
-        if has_adjustments:
-            total_delta = sum(a.delta for a in action.bus_adjustments)
-            # Reward correct direction relative to frequency error
-            if abs(freq_error) > 0.05:
-                # freq too low → need positive delta; freq too high → negative delta
-                correct_dir = (freq_error < 0 and total_delta > 0) or \
-                              (freq_error > 0 and total_delta < 0)
-                format_score = 0.3 if correct_dir else -0.3
+        # ── 3. Directional correctness ──
+        direction_score = 0.0
+        if valid_adjs:
+            total_delta = sum(a['delta'] for a in valid_adjs)
+            if abs_error > 0.05:
+                correct = (freq_error < 0 and total_delta > 0) or \
+                          (freq_error > 0 and total_delta < 0)
+                direction_score = 0.4 if correct else -0.4
             else:
-                # Stable grid: small action is fine, large one wastes resources
-                format_score = 0.1 if abs(total_delta) < 5.0 else -0.1
-        else:
-            # No-op: fine when stable, bad when deviating
-            format_score = 0.1 if abs(freq_error) < 0.05 else -0.3
+                # Grid stable — small action OK, large action penalised
+                direction_score = 0.1 if abs(total_delta) < 5.0 else -0.2
 
-        # ── 3. Environment-grounded reward ──
-        try:
-            env = _get_reward_env(task_config)
-            env._set_state(obs_dict)
+        # ── 4. Proportionality ──
+        prop_score = 0.0
+        if valid_adjs and abs_error > 0.05:
+            total_delta = sum(a['delta'] for a in valid_adjs)
+            ideal = abs_error * 15.0           # rough MW per Hz gain
+            actual = abs(total_delta)
+            if actual > 0.1:
+                ratio = min(actual, ideal) / max(actual, ideal, 0.1)
+                prop_score = 0.2 * ratio       # up to +0.2 for perfect proportionality
 
-            obs_after, reward, done, info = env.step(action)
-            env_score = reward.value
-
-            if info.is_blackout:
-                rewards.append(-1.0)
-                continue
-
-            # horizon=1: just immediate reward — avoids 24 extra env steps per optimizer step
-            rollout_reward = 0.0
-            for _ in range(horizon - 1):
-                if done:
-                    break
-                h_action = heuristic_policy(obs_after)
-                obs_after, r, done, info = env.step(h_action)
-                rollout_reward += r.value
-                if info.is_blackout:
-                    rollout_reward -= 10.0
-                    break
-
-            total_env_score = env_score + 0.5 * rollout_reward
-
-            # Narrower normalizer → wider spread across completions
-            # Typical per-step reward: 0.5–1.5 (good), -100 (blackout)
-            normalized = total_env_score / 3.0
-
-        except Exception:
-            normalized = _compute_heuristic_score(action, obs_dict)
-
-        total = format_score + normalized
+        total = schema_score + direction_score + prop_score
         rewards.append(max(-1.0, min(1.0, total)))
 
     return rewards

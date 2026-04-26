@@ -218,7 +218,7 @@ def run_grpo_training():
             else:
                 obs_dicts.append(ctx)
 
-        return compute_grpo_reward_env(texts, obs_dicts, task_config, horizon=1)
+        return compute_grpo_reward_env(texts, obs_dicts, task_config)
 
     # Set generation config explicitly so EOS is always respected and
     # generation never runs to max_completion_length every single time.
@@ -252,6 +252,7 @@ def run_grpo_training():
         optim="paged_adamw_8bit",
         warmup_ratio=0.05,
         lr_scheduler_type="cosine",
+        dataloader_num_workers=0,         # avoid subprocess issues with reward fn
         **({'torch_compile': False} if 'torch_compile' in _grpo_params else {}),
         **({'use_vllm': False} if 'use_vllm' in _grpo_params else {}),
     )
