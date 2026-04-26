@@ -78,7 +78,11 @@ Agents talk to the grid over HTTP. Any language, any framework — it's just `PO
 
 ---
 
-## The four scenarios
+## The scenarios
+
+Seven scenarios in total — four base grids and three difficulty variants of the Karnataka topology used for curriculum learning.
+
+**Base grids**
 
 | Task | Buses | Agents | Renewables | What's hard about it |
 |---|---|---|---|---|
@@ -87,9 +91,15 @@ Agents talk to the grid over HTTP. Any language, any framework — it's just `PO
 | `task_hard` | 14 | 3 | 70% | Tight margins. Small mistakes blow up. |
 | `task_karnataka` | 15 | 4 | Real mix | The actual KPTCL grid with GPS coordinates. |
 
-Episodes run for 50 steps. Scores land between **0.02 and 0.98** (higher = better).
+**Karnataka stress-test variants** — same 15-bus topology, different operating conditions:
 
-There are also three "stress test" variants of Karnataka — `karnataka_easy`, `karnataka_medium`, `karnataka_hard` — that crank the volatility, fault rates, and renewable share progressively.
+| Task | Renewables | Load | Line capacity |
+|---|---|---|---|
+| `karnataka_easy` | 0.3× | 0.6× | 1.5× |
+| `karnataka_medium` | 0.7× | 1.0× | 1.0× |
+| `karnataka_hard` | 1.3× | 1.4× | 0.75× |
+
+Episodes run for 50 steps. Scores land between **0.02 and 0.98** (higher = better).
 
 ---
 
@@ -149,12 +159,31 @@ Or open one of the Colab notebooks in Google Colab (free T4 works for both):
 
 Both notebooks produce the same `training/outputs/summary.json` schema, with a `framework` field identifying which path was used.
 
-### Docker
+### Docker / Hugging Face Space — server vs training mode
+
+The same image powers both the live control room and the GRPO training run.
+The behaviour is selected by a single environment variable, **`OPENGRID_MODE`**:
+
+| `OPENGRID_MODE` | What runs |
+|---|---|
+| *unset* (default) — or `server` | Boots `uvicorn app:app` on port 7860 — the live control-room dashboard. **This is what the public HF Space serves.** |
+| `training`               | Starts the UI server in the background (so the HF health-check passes), then runs `python run_training.py` in the foreground. When training finishes, plots and `summary.json` are written to `training/outputs/` and the already-running UI keeps serving them. |
+
+So, locally:
 
 ```bash
 docker build -t opengrid .
-docker run -p 7860:7860 opengrid
+
+docker run -p 7860:7860 opengrid                              # server mode (default)
+docker run -p 7860:7860 -e OPENGRID_MODE=training opengrid    # train, then serve results
 ```
+
+On Hugging Face Spaces, the variable is set under
+*Settings → Variables and secrets* — flip it to `training` to retrain on a GPU
+Space, flip it back to `server` (or remove it) to go back to live demo mode.
+The shipped `summary.json` and plots in this repo were produced exactly that
+way: a one-off `OPENGRID_MODE=training` run on an A10G Space, after which the
+variable was reset so the Space serves the trained results.
 
 ---
 
@@ -277,8 +306,7 @@ We fine-tuned **Qwen/Qwen2.5-1.5B-Instruct** on `task_karnataka` using GRPO (Gro
 | Framework | TRL `GRPOTrainer` + bitsandbytes 4-bit + PEFT LoRA |
 | LoRA | rank=16, alpha=32, dropout=0.05 |
 | Hardware | NVIDIA A10G (23.9 GB) |
-| Time | 159.6 minutes |
-| Steps | 449 across 600 prompts (3 epochs) |
+| Steps | 449 across 600 prompts |
 | Optimizer | paged_adamw_8bit, lr=2e-5, cosine |
 
 ### What happened

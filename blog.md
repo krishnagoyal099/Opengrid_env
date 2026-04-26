@@ -309,8 +309,7 @@ After all that setup, the actual training was almost anticlimactic.
 
 - Model: Qwen2.5-1.5B-Instruct
 - Hardware: NVIDIA A10G (23.9 GB)
-- Time: ~160 minutes
-- Steps: 449 (across 600 prompts × 3 epochs)
+- Steps: 449 (across 600 prompts)
 - LR: 2e-5, cosine schedule
 - Batch: 4 per device × 4 grad accum × 4 generations = effective 64
 
@@ -379,7 +378,7 @@ If any of this sounds interesting, here are three things you can do right now, i
 
 **Medium** — point an LLM at it. The whole grid is exposed as REST endpoints. You don't even need Python — `curl` works. See [the README](README.md) for examples.
 
-**Hard** — train your own agent. The code is at [github.com/krishnagoyal099/Opengrid_env](https://github.com/krishnagoyal099/Opengrid_env). The Colab notebook walks through the whole thing. A T4 will do it overnight. An A10G will do it in 2.5 hours.
+**Hard** — train your own agent. The code is at [github.com/krishnagoyal099/Opengrid_env](https://github.com/krishnagoyal099/Opengrid_env). The Colab notebook walks through the whole thing.
 
 ---
 
