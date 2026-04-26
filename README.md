@@ -18,7 +18,7 @@ pinned: false
 
 [![Live Demo](https://img.shields.io/badge/🤗%20Live%20Demo-HuggingFace%20Space-yellow)](https://huggingface.co/spaces/K446/Opengrid)
 [![GitHub](https://img.shields.io/badge/GitHub-Repository-181717?logo=github)](https://github.com/krishnagoyal099/Opengrid_env)
-[![Blog](https://img.shields.io/badge/📖-Read%20the%20story-blue)](blog.md)
+[![Blog](https://img.shields.io/badge/📖-Read%20the%20story-blue)](https://huggingface.co/spaces/K446/Opengrid/blob/main/blog.md)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -31,7 +31,7 @@ pinned: false
 OpenGrid is a **simulated power grid** with real physics. AI agents log in, see what's happening on their patch of the grid, and try to keep the lights on without causing a blackout.
 
 > **Try it live:** [huggingface.co/spaces/K446/Opengrid](https://huggingface.co/spaces/K446/Opengrid)
-> **Read the full story:** [blog.md](blog.md)
+> **Read the full story:** [blog.md](https://huggingface.co/spaces/K446/Opengrid/blob/main/blog.md)
 
 ![OpenGrid Dashboard — multi-agent control room running on the Karnataka topology](docs/images/dashboard.png)
 *The live dashboard during a Karnataka episode: 4 zones, real GPS coordinates, frequency gauge, generation mix, reward history. Agent 0 (Kalaburagi) is highlighted in the side panel.*
@@ -486,7 +486,7 @@ Every design decision in OpenGrid traces back to established power systems engin
 | Live demo | [huggingface.co/spaces/K446/Opengrid](https://huggingface.co/spaces/K446/Opengrid) |
 | GitHub | [github.com/krishnagoyal099/Opengrid_env](https://github.com/krishnagoyal099/Opengrid_env) |
 | Swagger | [/docs on the Space](https://k446-opengrid.hf.space/docs) |
-| Story | [blog.md](blog.md) |
+| Story | [blog.md](https://huggingface.co/spaces/K446/Opengrid/blob/main/blog.md) |
 
 ---
 
