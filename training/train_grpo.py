@@ -261,8 +261,7 @@ def compute_grpo_reward_env(
     """
     global _REWARD_CALL_COUNT
     _REWARD_CALL_COUNT += 1
-    if _REWARD_CALL_COUNT <= 5 or _REWARD_CALL_COUNT % 100 == 0:
-        print(f"  [reward_fn] call #{_REWARD_CALL_COUNT} | n={len(completions)}", flush=True)
+    print(f"  [reward] #{_REWARD_CALL_COUNT} | n={len(completions)}", flush=True)
 
     rewards = []
     for completion, obs_dict in zip(completions, observations):
